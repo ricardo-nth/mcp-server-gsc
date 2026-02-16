@@ -1,5 +1,6 @@
 import { google, searchconsole_v1, webmasters_v3 } from 'googleapis';
 import { GoogleAuth } from 'google-auth-library';
+import { withRetry } from './utils/retry.js';
 
 type SearchAnalyticsRequest =
   webmasters_v3.Params$Resource$Searchanalytics$Query['requestBody'];
@@ -10,6 +11,59 @@ type DeleteSitemapParams = webmasters_v3.Params$Resource$Sitemaps$Delete;
 type InspectRequest =
   searchconsole_v1.Params$Resource$Urlinspection$Index$Inspect['requestBody'];
 
+// ---------------------------------------------------------------------------
+// Custom error types
+// ---------------------------------------------------------------------------
+
+export class GSCError extends Error {
+  constructor(
+    message: string,
+    public readonly code: string,
+    public readonly statusCode?: number,
+  ) {
+    super(message);
+    this.name = 'GSCError';
+  }
+}
+
+export class GSCAuthError extends GSCError {
+  constructor(message?: string) {
+    super(
+      message ??
+        'Authentication failed. Check GOOGLE_APPLICATION_CREDENTIALS points to a valid service account key.',
+      'AUTH_ERROR',
+      401,
+    );
+    this.name = 'GSCAuthError';
+  }
+}
+
+export class GSCQuotaError extends GSCError {
+  constructor(message?: string) {
+    super(
+      message ?? 'API quota exceeded. Wait a moment and retry, or reduce request frequency.',
+      'QUOTA_ERROR',
+      429,
+    );
+    this.name = 'GSCQuotaError';
+  }
+}
+
+export class GSCPermissionError extends GSCError {
+  constructor(siteUrl: string) {
+    super(
+      `No access to "${siteUrl}". Verify the service account has been added as a user in Search Console for this property.`,
+      'PERMISSION_ERROR',
+      403,
+    );
+    this.name = 'GSCPermissionError';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
+
 export class SearchConsoleService {
   private auth: GoogleAuth;
 
@@ -19,10 +73,6 @@ export class SearchConsoleService {
       scopes: ['https://www.googleapis.com/auth/webmasters.readonly'],
     });
   }
-
-  // ---------------------------------------------------------------------------
-  // Internal helpers
-  // ---------------------------------------------------------------------------
 
   private async getWebmasters() {
     const authClient = await this.auth.getClient();
@@ -40,10 +90,6 @@ export class SearchConsoleService {
     } as searchconsole_v1.Options);
   }
 
-  /**
-   * Attempt to normalize a URL to sc-domain format for permission fallback.
-   * If the URL is already sc-domain:, returns it as-is.
-   */
   private normalizeUrl(url: string): string {
     if (url.startsWith('sc-domain:')) return url;
     try {
@@ -55,13 +101,31 @@ export class SearchConsoleService {
   }
 
   /**
-   * Try an operation; if it fails with a permission error, retry with
-   * normalized URL. This handles cases where the user provides a URL-prefix
-   * property but only has domain-level access, or vice versa.
+   * Classify Google API errors into actionable custom error types.
    */
+  private classifyError(err: unknown, context?: string): never {
+    if (!(err instanceof Error)) throw err;
+
+    const msg = err.message.toLowerCase();
+    const status = (err as unknown as Record<string, unknown>).code as number | undefined;
+
+    if (status === 401 || msg.includes('authentication') || msg.includes('credentials')) {
+      throw new GSCAuthError();
+    }
+    if (status === 429 || msg.includes('quota') || msg.includes('rate limit')) {
+      throw new GSCQuotaError();
+    }
+    if (status === 403 || msg.includes('permission')) {
+      throw new GSCPermissionError(context ?? 'unknown');
+    }
+
+    throw err;
+  }
+
   private async withPermissionFallback<T>(
     operation: () => Promise<T>,
     fallback: () => Promise<T>,
+    siteUrl?: string,
   ): Promise<T> {
     try {
       return await operation();
@@ -70,9 +134,14 @@ export class SearchConsoleService {
         err instanceof Error &&
         err.message.toLowerCase().includes('permission')
       ) {
-        return await fallback();
+        try {
+          return await fallback();
+        } catch {
+          // Both failed — throw actionable error
+          throw new GSCPermissionError(siteUrl ?? 'unknown');
+        }
       }
-      throw err;
+      this.classifyError(err, siteUrl);
     }
   }
 
@@ -81,8 +150,10 @@ export class SearchConsoleService {
   // ---------------------------------------------------------------------------
 
   async listSites() {
-    const wm = await this.getWebmasters();
-    return wm.sites.list();
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return wm.sites.list();
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -90,15 +161,18 @@ export class SearchConsoleService {
   // ---------------------------------------------------------------------------
 
   async searchAnalytics(siteUrl: string, body: SearchAnalyticsRequest) {
-    const wm = await this.getWebmasters();
-    return this.withPermissionFallback(
-      () => wm.searchanalytics.query({ siteUrl, requestBody: body }),
-      () =>
-        wm.searchanalytics.query({
-          siteUrl: this.normalizeUrl(siteUrl),
-          requestBody: body,
-        }),
-    );
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.searchanalytics.query({ siteUrl, requestBody: body }),
+        () =>
+          wm.searchanalytics.query({
+            siteUrl: this.normalizeUrl(siteUrl),
+            requestBody: body,
+          }),
+        siteUrl,
+      );
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -106,8 +180,10 @@ export class SearchConsoleService {
   // ---------------------------------------------------------------------------
 
   async indexInspect(body: InspectRequest) {
-    const sc = await this.getSearchConsole();
-    return sc.urlInspection.index.inspect({ requestBody: body });
+    return withRetry(async () => {
+      const sc = await this.getSearchConsole();
+      return sc.urlInspection.index.inspect({ requestBody: body });
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -115,50 +191,62 @@ export class SearchConsoleService {
   // ---------------------------------------------------------------------------
 
   async listSitemaps(params: ListSitemapsParams) {
-    const wm = await this.getWebmasters();
-    return this.withPermissionFallback(
-      () => wm.sitemaps.list(params),
-      () =>
-        wm.sitemaps.list({
-          ...params,
-          siteUrl: this.normalizeUrl(params.siteUrl!),
-        }),
-    );
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.sitemaps.list(params),
+        () =>
+          wm.sitemaps.list({
+            ...params,
+            siteUrl: this.normalizeUrl(params.siteUrl!),
+          }),
+        params.siteUrl,
+      );
+    });
   }
 
   async getSitemap(params: GetSitemapParams) {
-    const wm = await this.getWebmasters();
-    return this.withPermissionFallback(
-      () => wm.sitemaps.get(params),
-      () =>
-        wm.sitemaps.get({
-          ...params,
-          siteUrl: this.normalizeUrl(params.siteUrl!),
-        }),
-    );
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.sitemaps.get(params),
+        () =>
+          wm.sitemaps.get({
+            ...params,
+            siteUrl: this.normalizeUrl(params.siteUrl!),
+          }),
+        params.siteUrl,
+      );
+    });
   }
 
   async submitSitemap(params: SubmitSitemapParams) {
-    const wm = await this.getWebmasters();
-    return this.withPermissionFallback(
-      () => wm.sitemaps.submit(params),
-      () =>
-        wm.sitemaps.submit({
-          ...params,
-          siteUrl: this.normalizeUrl(params.siteUrl!),
-        }),
-    );
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.sitemaps.submit(params),
+        () =>
+          wm.sitemaps.submit({
+            ...params,
+            siteUrl: this.normalizeUrl(params.siteUrl!),
+          }),
+        params.siteUrl,
+      );
+    });
   }
 
   async deleteSitemap(params: DeleteSitemapParams) {
-    const wm = await this.getWebmasters();
-    return this.withPermissionFallback(
-      () => wm.sitemaps.delete(params),
-      () =>
-        wm.sitemaps.delete({
-          ...params,
-          siteUrl: this.normalizeUrl(params.siteUrl!),
-        }),
-    );
+    return withRetry(async () => {
+      const wm = await this.getWebmasters();
+      return this.withPermissionFallback(
+        () => wm.sitemaps.delete(params),
+        () =>
+          wm.sitemaps.delete({
+            ...params,
+            siteUrl: this.normalizeUrl(params.siteUrl!),
+          }),
+        params.siteUrl,
+      );
+    });
   }
 }

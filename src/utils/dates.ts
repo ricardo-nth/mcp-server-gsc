@@ -24,6 +24,24 @@ export function relativeDateRange(days: number): {
 }
 
 /**
+ * Resolve a flexible date range: if `days` is given, compute relative range.
+ * If startDate/endDate are given, use them. Throws if neither is provided.
+ */
+export function resolveDateRange(args: {
+  startDate?: string;
+  endDate?: string;
+  days?: number;
+}): { startDate: string; endDate: string } {
+  if (args.days) return relativeDateRange(args.days);
+  if (args.startDate && args.endDate) {
+    return { startDate: args.startDate, endDate: args.endDate };
+  }
+  throw new Error(
+    'Either "days" or both "startDate" and "endDate" must be provided.',
+  );
+}
+
+/**
  * Compute two equal-length periods for comparison.
  * Period A (recent): ends yesterday, spans `days`.
  * Period B (previous): ends the day before period A starts, spans `days`.

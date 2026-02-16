@@ -9,10 +9,21 @@ export const SiteUrlSchema = z.object({
     ),
 });
 
-/** Shared date range fields */
+/**
+ * Flexible date range: either explicit startDate/endDate or `days` for a
+ * relative range ending yesterday. If `days` is provided, it takes precedence.
+ */
 export const DateRangeSchema = z.object({
-  startDate: z.string().describe('Start date (YYYY-MM-DD)'),
-  endDate: z.string().describe('End date (YYYY-MM-DD)'),
+  startDate: z.string().optional().describe('Start date (YYYY-MM-DD). Optional if `days` is provided.'),
+  endDate: z.string().optional().describe('End date (YYYY-MM-DD). Optional if `days` is provided.'),
+  days: z
+    .number()
+    .min(1)
+    .max(180)
+    .optional()
+    .describe(
+      'Relative date range in days ending yesterday. Alternative to startDate/endDate.',
+    ),
 });
 
 /** Dimensions that can be used to break down analytics */

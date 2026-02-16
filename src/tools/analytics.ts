@@ -4,6 +4,7 @@ import {
   EnhancedSearchAnalyticsSchema,
   QuickWinsSchema,
 } from '../schemas/analytics.js';
+import { resolveDateRange } from '../utils/dates.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
 // ---------------------------------------------------------------------------
@@ -127,10 +128,11 @@ export async function handleSearchAnalytics(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = SearchAnalyticsSchema.parse(raw);
+  const { startDate, endDate } = resolveDateRange(args);
 
   const body: Record<string, unknown> = {
-    startDate: args.startDate,
-    endDate: args.endDate,
+    startDate,
+    endDate,
     dimensions: args.dimensions,
     searchType: args.type,
     aggregationType: args.aggregationType,
@@ -151,10 +153,11 @@ export async function handleEnhancedSearchAnalytics(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = EnhancedSearchAnalyticsSchema.parse(raw);
+  const { startDate, endDate } = resolveDateRange(args);
 
   const body: Record<string, unknown> = {
-    startDate: args.startDate,
-    endDate: args.endDate,
+    startDate,
+    endDate,
     dimensions: args.dimensions,
     searchType: args.type,
     aggregationType: args.aggregationType,
@@ -207,10 +210,11 @@ export async function handleDetectQuickWins(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = QuickWinsSchema.parse(raw);
+  const { startDate, endDate } = resolveDateRange(args);
 
   const body: Record<string, unknown> = {
-    startDate: args.startDate,
-    endDate: args.endDate,
+    startDate,
+    endDate,
     dimensions: ['query', 'page'],
     rowLimit: 25000,
   };

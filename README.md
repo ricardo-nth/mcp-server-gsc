@@ -1,162 +1,112 @@
-# Google Search Console MCP Server
+# mcp-server-gsc-pro
 
-A Model Context Protocol (MCP) server providing comprehensive access to Google Search Console data with enhanced analytics capabilities.
+Enhanced MCP server for Google Search Console. All original functionality from [mcp-server-gsc](https://github.com/ahonn/mcp-server-gsc) plus fresh data access, computed intelligence tools, and flexible date handling.
 
-## Features
+## What's different
 
-- **Enhanced Search Analytics**: Retrieve up to 25,000 rows of performance data
-- **Advanced Filtering**: Support for regex patterns and multiple filter operators
-- **Quick Wins Detection**: Automatically identify optimization opportunities
-- **Rich Dimensions**: Query, page, country, device, and search appearance analysis
-- **Flexible Date Ranges**: Customizable reporting periods with historical data access
+- **16 tools** (vs 8 original) — adds period comparison, content decay detection, keyword cannibalization, CTR analysis, keyword diffing, batch URL inspection, search type breakdown
+- **Fresh data** — `dataState: "all"` for data within hours, not days
+- **More search types** — `discover`, `googleNews` alongside web/image/video/news
+- **Auto-retry** — exponential backoff with jitter on 429/5xx
+- **Flexible dates** — use `days: 28` instead of calculating start/end dates
+- **Actionable errors** — `GSCAuthError`, `GSCQuotaError`, `GSCPermissionError` with fix instructions
+- **Auto-pagination** utility for >25K row queries
 
-### Sponsored by
+## Setup
 
-<a href="https://macuse.app?ref=mcp-server-gsc">
-    <img src="https://macuse.app/logo-pill.png" width="200" alt="macuse.app">
-</a>
+### 1. Google Service Account
 
-[macuse.app](https://macuse.app) is a native macOS application that gives your AI superpowers by integrating AI assistants with macOS apps like Calendar, Mail, and Notes, plus universal UI control for any application. Supports Claude Desktop, Cursor, and Raycast with one-click setup. Privacy-first, runs locally.
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create/select a project, enable the **Search Console API**
+3. Create a service account → download the JSON key
+4. In [Search Console](https://search.google.com/search-console/), add the service account email as a user for each property
 
-## Prerequisites
-
-- Node.js 18 or later
-- Google Cloud Project with Search Console API enabled
-- Service Account credentials with Search Console access
-
-## Installation
+### 2. Install
 
 ```bash
-npm install mcp-server-gsc
+npm install -g mcp-server-gsc-pro
 ```
 
-## Authentication Setup
+### 3. Configure MCP
 
-To obtain Google Search Console API credentials:
-
-1. Visit the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Enable the API:
-
-- Go to "APIs & Services" > "Library"
-- Search for and enable ["Search Console API"](https://console.cloud.google.com/marketplace/product/google/searchconsole.googleapis.com)
-
-4. Create credentials:
-
-- Navigate to ["APIs & Services" > "Credentials"](https://console.cloud.google.com/apis/credentials)
-- Click "Create Credentials" > "Service Account"
-- Fill in the service account details
-- Create a new key in JSON format
-- The credentials file (.json) will download automatically
-
-5. Grant access:
-
-- Open Search Console
-- Add the service account email (format: name@project.iam.gserviceaccount.com) as a property administrator
-
-## Usage
-
-### Claude Desktop Configuration
+Add to your `.mcp.json` or Claude Desktop config:
 
 ```json
 {
   "mcpServers": {
     "gsc": {
-      "command": "npx",
-      "args": ["-y", "mcp-server-gsc"],
+      "command": "mcp-server-gsc-pro",
       "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/credentials.json"
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json"
       }
     }
   }
 }
 ```
 
-## Available Tools
-
-### search_analytics
-
-Get comprehensive search performance data from Google Search Console with enhanced analytics capabilities.
-
-**Required Parameters:**
-
-- `siteUrl`: Site URL (format: `http://www.example.com/` or `sc-domain:example.com`)
-- `startDate`: Start date (YYYY-MM-DD)
-- `endDate`: End date (YYYY-MM-DD)
-
-**Optional Parameters:**
-
-- `dimensions`: Comma-separated list (`query`, `page`, `country`, `device`, `searchAppearance`, `date`)
-- `type`: Search type (`web`, `image`, `video`, `news`, `discover`, `googleNews`)
-- `aggregationType`: Aggregation method (`auto`, `byNewsShowcasePanel`, `byProperty`, `byPage`)
-- `rowLimit`: Maximum rows to return (default: 1000, max: 25000)
-- `dataState`: Data freshness (`all` or `final`, default: `final`)
-
-**Filter Parameters:**
-
-- `pageFilter`: Filter by page URL (supports regex with `regex:` prefix)
-- `queryFilter`: Filter by search query (supports regex with `regex:` prefix)
-- `countryFilter`: Filter by country ISO 3166-1 alpha-3 code (e.g., `USA`, `CHN`)
-- `deviceFilter`: Filter by device type (`DESKTOP`, `MOBILE`, `TABLET`)
-- `searchAppearanceFilter`: Filter by search feature (e.g., `AMP_BLUE_LINK`, `AMP_TOP_STORIES`)
-- `filterOperator`: Operator for filters (`equals`, `contains`, `notEquals`, `notContains`, `includingRegex`, `excludingRegex`)
-
-**Quick Wins Detection:**
-
-- `detectQuickWins`: Enable automatic detection of optimization opportunities (default: `false`)
-- `quickWinsConfig`: Configuration for quick wins detection:
-  - `positionRange`: Position range to consider (default: `[4, 20]`)
-  - `minImpressions`: Minimum impressions threshold (default: `100`)
-  - `minCtr`: Minimum CTR percentage (default: `1`)
-
-**Example - Basic Query:**
+Or run from source:
 
 ```json
 {
-  "siteUrl": "https://example.com",
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31",
-  "dimensions": "query,page",
-  "rowLimit": 5000
-}
-```
-
-**Example - Advanced Filtering with Regex:**
-
-```json
-{
-  "siteUrl": "https://example.com",
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31",
-  "dimensions": "page,query",
-  "queryFilter": "regex:(AI|machine learning|ML)",
-  "filterOperator": "includingRegex",
-  "deviceFilter": "MOBILE",
-  "rowLimit": 10000
-}
-```
-
-**Example - Quick Wins Detection:**
-
-```json
-{
-  "siteUrl": "https://example.com",
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31",
-  "dimensions": "query,page",
-  "detectQuickWins": true,
-  "quickWinsConfig": {
-    "positionRange": [4, 15],
-    "minImpressions": 500,
-    "minCtr": 2
+  "mcpServers": {
+    "gsc": {
+      "command": "node",
+      "args": ["/path/to/mcp-server-gsc-pro/dist/index.js"],
+      "env": {
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json"
+      }
+    }
   }
 }
+```
+
+## Tools
+
+### Core
+
+| Tool | Description |
+|------|-------------|
+| `list_sites` | List all GSC properties accessible to the service account |
+| `search_analytics` | Query clicks/impressions/CTR/position with filters |
+| `enhanced_search_analytics` | Same + regex filters, quick-wins detection |
+| `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance |
+| `index_inspect` | Check indexing status, crawl info, rich results for a URL |
+| `list_sitemaps` | List submitted sitemaps |
+| `get_sitemap` | Get details of a specific sitemap |
+| `submit_sitemap` | Submit a new sitemap |
+| `delete_sitemap` | Remove a sitemap |
+
+### Computed Intelligence
+
+| Tool | Description |
+|------|-------------|
+| `compare_periods` | Two-period side-by-side with delta + % change |
+| `detect_content_decay` | Pages losing clicks over time, sorted by loss |
+| `detect_cannibalization` | Queries with multiple competing pages |
+| `diff_keywords` | New and lost keywords between periods |
+| `batch_inspect` | Inspect up to 100 URLs (rate-limited 1/sec) |
+| `ctr_analysis` | CTR vs position benchmarks, find underperformers |
+| `search_type_breakdown` | Compare web/image/video/discover/news |
+
+### Common Parameters
+
+**Flexible dates** — all date-based tools accept either explicit dates or relative days:
+- `startDate` + `endDate` (YYYY-MM-DD)
+- `days` (relative, ending yesterday)
+
+**Data freshness** — set `dataState: "all"` on analytics tools for fresh (hours-old) data.
+
+**Search types** — `web`, `image`, `video`, `news`, `discover`, `googleNews`.
+
+## Development
+
+```bash
+pnpm install
+pnpm build      # TypeScript compile
+pnpm test       # Run vitest
+pnpm lint       # Type check only
 ```
 
 ## License
 
 MIT
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines before submitting pull requests.

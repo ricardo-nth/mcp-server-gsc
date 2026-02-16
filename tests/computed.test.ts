@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   formatDate,
   relativeDateRange,
+  resolveDateRange,
   comparePeriods,
   rollingWindows,
 } from '../src/utils/dates.js';
@@ -66,6 +67,22 @@ describe('Date utilities', () => {
     // With step=3, window count: floor((28-7)/3) + 1 = 8
     expect(windows.length).toBeGreaterThan(4);
   });
+
+  it('resolveDateRange uses days when provided', () => {
+    const range = resolveDateRange({ days: 7 });
+    expect(range.startDate).toBeDefined();
+    expect(range.endDate).toBeDefined();
+  });
+
+  it('resolveDateRange uses explicit dates when provided', () => {
+    const range = resolveDateRange({ startDate: '2025-01-01', endDate: '2025-01-31' });
+    expect(range.startDate).toBe('2025-01-01');
+    expect(range.endDate).toBe('2025-01-31');
+  });
+
+  it('resolveDateRange throws when neither days nor dates provided', () => {
+    expect(() => resolveDateRange({})).toThrow();
+  });
 });
 
 describe('Computed schemas', () => {
@@ -91,10 +108,13 @@ describe('Computed schemas', () => {
     ).toThrow();
   });
 
-  it('CannibalizationSchema requires dates', () => {
-    expect(() =>
-      CannibalizationSchema.parse({ siteUrl: 'sc-domain:example.com' }),
-    ).toThrow();
+  it('CannibalizationSchema accepts days as alternative to dates', () => {
+    const result = CannibalizationSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+    });
+    expect(result.days).toBe(28);
+    expect(result.startDate).toBeUndefined();
   });
 
   it('DiffKeywordsSchema defaults', () => {
@@ -121,17 +141,18 @@ describe('Computed schemas', () => {
     expect(result.languageCode).toBe('en-US');
   });
 
-  it('CtrAnalysisSchema requires dates', () => {
-    expect(() =>
-      CtrAnalysisSchema.parse({ siteUrl: 'sc-domain:example.com' }),
-    ).toThrow();
+  it('CtrAnalysisSchema accepts days as alternative to dates', () => {
+    const result = CtrAnalysisSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 14,
+    });
+    expect(result.days).toBe(14);
   });
 
   it('SearchTypeBreakdownSchema defaults', () => {
     const result = SearchTypeBreakdownSchema.parse({
       siteUrl: 'sc-domain:example.com',
-      startDate: '2025-01-01',
-      endDate: '2025-01-31',
+      days: 28,
     });
     expect(result.types).toEqual(['web', 'image', 'video', 'discover', 'news']);
   });

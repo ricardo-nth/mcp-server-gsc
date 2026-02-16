@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SiteUrlSchema, SearchTypeValues, DeviceValues } from './base.js';
+import { SiteUrlSchema, DateRangeSchema, SearchTypeValues, DeviceValues } from './base.js';
 
 /** compare_periods tool schema */
 export const ComparePeriodsSchema = SiteUrlSchema.extend({
@@ -52,9 +52,7 @@ export const ContentDecaySchema = SiteUrlSchema.extend({
 });
 
 /** detect_cannibalization tool schema */
-export const CannibalizationSchema = SiteUrlSchema.extend({
-  startDate: z.string().describe('Start date (YYYY-MM-DD)'),
-  endDate: z.string().describe('End date (YYYY-MM-DD)'),
+export const CannibalizationSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
   minImpressions: z
     .number()
     .default(10)
@@ -102,9 +100,7 @@ export const BatchInspectSchema = SiteUrlSchema.extend({
 });
 
 /** ctr_analysis tool schema */
-export const CtrAnalysisSchema = SiteUrlSchema.extend({
-  startDate: z.string().describe('Start date (YYYY-MM-DD)'),
-  endDate: z.string().describe('End date (YYYY-MM-DD)'),
+export const CtrAnalysisSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
   minImpressions: z
     .number()
     .default(50)
@@ -118,9 +114,7 @@ export const CtrAnalysisSchema = SiteUrlSchema.extend({
 });
 
 /** search_type_breakdown tool schema */
-export const SearchTypeBreakdownSchema = SiteUrlSchema.extend({
-  startDate: z.string().describe('Start date (YYYY-MM-DD)'),
-  endDate: z.string().describe('End date (YYYY-MM-DD)'),
+export const SearchTypeBreakdownSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
   types: z
     .array(z.enum(SearchTypeValues))
     .optional()

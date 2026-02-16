@@ -8,7 +8,7 @@ import {
   CtrAnalysisSchema,
   SearchTypeBreakdownSchema,
 } from '../schemas/computed.js';
-import { comparePeriods } from '../utils/dates.js';
+import { comparePeriods, resolveDateRange } from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
@@ -201,10 +201,11 @@ export async function handleCannibalization(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = CannibalizationSchema.parse(raw);
+  const { startDate, endDate } = resolveDateRange(args);
 
   const response = await service.searchAnalytics(args.siteUrl, {
-    startDate: args.startDate,
-    endDate: args.endDate,
+    startDate,
+    endDate,
     dimensions: ['query', 'page'],
     rowLimit: args.rowLimit,
   });
@@ -259,7 +260,7 @@ export async function handleCannibalization(
     .sort((a, b) => b!.totalImpressions - a!.totalImpressions);
 
   return jsonResult({
-    dateRange: { startDate: args.startDate, endDate: args.endDate },
+    dateRange: { startDate, endDate },
     cannibalizationIssues: cannibalized.length,
     queries: cannibalized,
   });
@@ -382,10 +383,11 @@ export async function handleCtrAnalysis(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = CtrAnalysisSchema.parse(raw);
+  const { startDate, endDate } = resolveDateRange(args);
 
   const response = await service.searchAnalytics(args.siteUrl, {
-    startDate: args.startDate,
-    endDate: args.endDate,
+    startDate,
+    endDate,
     dimensions: ['query'],
     rowLimit: args.rowLimit,
   });
@@ -417,7 +419,7 @@ export async function handleCtrAnalysis(
   const overperformers = analysis.filter((a) => a.status === 'above_benchmark');
 
   return jsonResult({
-    dateRange: { startDate: args.startDate, endDate: args.endDate },
+    dateRange: { startDate, endDate },
     totalAnalyzed: analysis.length,
     underperformers: underperformers.length,
     overperformers: overperformers.length,
@@ -434,12 +436,13 @@ export async function handleSearchTypeBreakdown(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = SearchTypeBreakdownSchema.parse(raw);
+  const { startDate, endDate } = resolveDateRange(args);
 
   const requests = args.types.map((type) =>
     service
       .searchAnalytics(args.siteUrl, {
-        startDate: args.startDate,
-        endDate: args.endDate,
+        startDate,
+        endDate,
         searchType: type,
       })
       .then((res) => {
@@ -478,7 +481,7 @@ export async function handleSearchTypeBreakdown(
   }));
 
   return jsonResult({
-    dateRange: { startDate: args.startDate, endDate: args.endDate },
+    dateRange: { startDate, endDate },
     breakdown: withShare,
   });
 }
