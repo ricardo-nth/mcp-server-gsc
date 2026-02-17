@@ -1,6 +1,6 @@
 {
   "name": "mcp-server-gsc-pro",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Enhanced MCP server for Google Search Console — fresh data, hourly analytics, search type filtering, content decay detection, keyword cannibalization, and more",
   "author": "Ricardo <ricardo@nth.one>",
   "license": "MIT",

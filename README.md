@@ -4,7 +4,7 @@ Enhanced MCP server for Google Search Console. All original functionality from [
 
 ## What's different
 
-- **16 tools** (vs 8 original) — adds period comparison, content decay detection, keyword cannibalization, CTR analysis, keyword diffing, batch URL inspection, search type breakdown
+- **26 tools** (vs 8 original) — GSC analytics + computed intelligence + PageSpeed Insights + Indexing API + CrUX web vitals + mobile-friendly testing
 - **Fresh data** — `dataState: "all"` for data within hours, not days
 - **More search types** — `discover`, `googleNews` alongside web/image/video/news
 - **Auto-retry** — exponential backoff with jitter on 429/5xx
@@ -17,9 +17,10 @@ Enhanced MCP server for Google Search Console. All original functionality from [
 ### 1. Google Service Account
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create/select a project, enable the **Search Console API**
+2. Create/select a project, enable the **Search Console API** and **Indexing API**
 3. Create a service account → download the JSON key
 4. In [Search Console](https://search.google.com/search-console/), add the service account email as a user for each property
+5. *(Optional)* For CrUX tools: create an API key in Cloud Console → Credentials
 
 ### 2. Install
 
@@ -37,12 +38,15 @@ Add to your `.mcp.json` or Claude Desktop config:
     "gsc": {
       "command": "mcp-server-gsc-pro",
       "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json"
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json",
+        "GOOGLE_CLOUD_API_KEY": "your-api-key-here"
       }
     }
   }
 }
 ```
+
+> `GOOGLE_CLOUD_API_KEY` is optional — only needed for `crux_query` and `crux_history` tools. All other tools work without it.
 
 Or run from source:
 
@@ -53,7 +57,8 @@ Or run from source:
       "command": "node",
       "args": ["/path/to/mcp-server-gsc-pro/dist/index.js"],
       "env": {
-        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json"
+        "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json",
+        "GOOGLE_CLOUD_API_KEY": "your-api-key-here"
       }
     }
   }
@@ -87,6 +92,20 @@ Or run from source:
 | `batch_inspect` | Inspect up to 100 URLs (rate-limited 1/sec) |
 | `ctr_analysis` | CTR vs position benchmarks, find underperformers |
 | `search_type_breakdown` | Compare web/image/video/discover/news |
+
+### Adjacent APIs
+
+| Tool | Description |
+|------|-------------|
+| `get_site` | Get site property details (permission level, URL) |
+| `add_site` | Add a new site property to Search Console |
+| `delete_site` | Remove a site property from Search Console |
+| `mobile_friendly_test` | Test a URL for mobile-friendliness with optional screenshot |
+| `pagespeed_insights` | Lighthouse scores + field data (no auth required) |
+| `indexing_publish` | Notify Google of URL updates/deletions (200/day quota) |
+| `indexing_status` | Get Indexing API notification metadata for a URL |
+| `crux_query` | Core Web Vitals (LCP, CLS, INP) by URL or origin |
+| `crux_history` | 40-week rolling CWV trends by URL or origin |
 
 ### Common Parameters
 

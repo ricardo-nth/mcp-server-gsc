@@ -34,6 +34,11 @@ import {
   CtrAnalysisSchema,
   SearchTypeBreakdownSchema,
 } from './schemas/computed.js';
+import { GetSiteSchema, AddSiteSchema, DeleteSiteSchema } from './schemas/sites.js';
+import { MobileFriendlyTestSchema } from './schemas/mobilefriendly.js';
+import { PageSpeedInsightsSchema } from './schemas/pagespeed.js';
+import { IndexingPublishSchema, IndexingStatusSchema } from './schemas/indexing.js';
+import { CrUXQuerySchema, CrUXHistorySchema } from './schemas/crux.js';
 
 // Tool handlers
 import {
@@ -58,6 +63,11 @@ import {
   handleCtrAnalysis,
   handleSearchTypeBreakdown,
 } from './tools/computed.js';
+import { handleGetSite, handleAddSite, handleDeleteSite } from './tools/sites.js';
+import { handleMobileFriendlyTest } from './tools/mobilefriendly.js';
+import { handlePageSpeedInsights } from './tools/pagespeed.js';
+import { handleIndexingPublish, handleIndexingStatus } from './tools/indexing.js';
+import { handleCrUXQuery, handleCrUXHistory } from './tools/crux.js';
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -71,12 +81,15 @@ if (!GOOGLE_APPLICATION_CREDENTIALS) {
   process.exit(1);
 }
 
+const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY;
+// Optional — only needed for CrUX tools. Server starts fine without it.
+
 // ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-  { name: 'mcp-server-gsc-pro', version: '1.0.0' },
+  { name: 'mcp-server-gsc-pro', version: '1.1.0' },
   { capabilities: { tools: {} } },
 );
 
@@ -177,6 +190,63 @@ const TOOLS = [
       'Compare performance across search types (web, image, video, discover, news) in a single call',
     inputSchema: zodToJsonSchema(SearchTypeBreakdownSchema),
   },
+  // --- Sites CRUD ---
+  {
+    name: 'get_site',
+    description:
+      'Get details for a specific site property in Search Console (permission level, URL)',
+    inputSchema: zodToJsonSchema(GetSiteSchema),
+  },
+  {
+    name: 'add_site',
+    description: 'Add a new site property to Google Search Console',
+    inputSchema: zodToJsonSchema(AddSiteSchema),
+  },
+  {
+    name: 'delete_site',
+    description: 'Remove a site property from Google Search Console',
+    inputSchema: zodToJsonSchema(DeleteSiteSchema),
+  },
+  // --- Mobile-Friendly Test ---
+  {
+    name: 'mobile_friendly_test',
+    description:
+      'Test a URL for mobile-friendliness and get issues with optional screenshot',
+    inputSchema: zodToJsonSchema(MobileFriendlyTestSchema),
+  },
+  // --- PageSpeed Insights ---
+  {
+    name: 'pagespeed_insights',
+    description:
+      'Run Google PageSpeed Insights (Lighthouse) analysis on a URL — scores, field data, and diagnostics. No auth required.',
+    inputSchema: zodToJsonSchema(PageSpeedInsightsSchema),
+  },
+  // --- Google Indexing API ---
+  {
+    name: 'indexing_publish',
+    description:
+      'Notify Google that a URL has been updated or deleted for faster crawling (Indexing API, 200/day quota). Note: officially limited to JobPosting/BroadcastEvent schema types.',
+    inputSchema: zodToJsonSchema(IndexingPublishSchema),
+  },
+  {
+    name: 'indexing_status',
+    description:
+      'Get Indexing API notification metadata for a URL — shows latest update/remove notifications. URL must have been previously submitted via indexing_publish.',
+    inputSchema: zodToJsonSchema(IndexingStatusSchema),
+  },
+  // --- Chrome UX Report (CrUX) ---
+  {
+    name: 'crux_query',
+    description:
+      'Query Chrome UX Report for Core Web Vitals (LCP, CLS, INP, FCP, TTFB) by URL or origin. Requires GOOGLE_CLOUD_API_KEY env var.',
+    inputSchema: zodToJsonSchema(CrUXQuerySchema),
+  },
+  {
+    name: 'crux_history',
+    description:
+      'Query Chrome UX Report 40-week rolling history for Core Web Vitals trends by URL or origin. Requires GOOGLE_CLOUD_API_KEY env var.',
+    inputSchema: zodToJsonSchema(CrUXHistorySchema),
+  },
 ] as const;
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -194,7 +264,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     throw new Error('Arguments are required');
   }
 
-  const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS);
+  const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_API_KEY);
 
   try {
     switch (name) {
@@ -231,6 +301,29 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleCtrAnalysis(service, args);
       case 'search_type_breakdown':
         return await handleSearchTypeBreakdown(service, args);
+      // Sites CRUD
+      case 'get_site':
+        return await handleGetSite(service, args);
+      case 'add_site':
+        return await handleAddSite(service, args);
+      case 'delete_site':
+        return await handleDeleteSite(service, args);
+      // Mobile-Friendly Test
+      case 'mobile_friendly_test':
+        return await handleMobileFriendlyTest(service, args);
+      // PageSpeed Insights
+      case 'pagespeed_insights':
+        return await handlePageSpeedInsights(service, args);
+      // Indexing API
+      case 'indexing_publish':
+        return await handleIndexingPublish(service, args);
+      case 'indexing_status':
+        return await handleIndexingStatus(service, args);
+      // CrUX
+      case 'crux_query':
+        return await handleCrUXQuery(service, args);
+      case 'crux_history':
+        return await handleCrUXHistory(service, args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
