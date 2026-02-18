@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { handleComparePeriods } from '../src/tools/computed.js';
 import { handleDetectQuickWins } from '../src/tools/analytics.js';
 import { handlePageHealthDashboard } from '../src/tools/computed2.js';
+import { handlePageSpeedInsights } from '../src/tools/pagespeed.js';
 import type { SearchConsoleService } from '../src/service.js';
 import type { ToolResult } from '../src/utils/types.js';
 
@@ -153,5 +154,25 @@ describe('Tool handlers', () => {
 
     expect((service.searchAnalytics as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
     expect(payload.rowsAnalyzed).toBe(25001);
+  });
+
+  it('pagespeed_insights falls back to input URL when response id is missing', async () => {
+    const service = {
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: {
+          analysisUTCTimestamp: '2026-02-18T00:00:00.000Z',
+          lighthouseResult: {},
+        },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handlePageSpeedInsights(service, {
+      url: 'https://example.com/page',
+      categories: ['performance'],
+      strategy: 'mobile',
+    });
+    const payload = parseResult(result);
+
+    expect(payload.url).toBe('https://example.com/page');
   });
 });

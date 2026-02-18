@@ -195,9 +195,22 @@ export class SearchConsoleService {
       ) {
         try {
           return await fallback();
-        } catch {
-          // Both failed — throw actionable error
-          throw new GSCPermissionError(siteUrl ?? 'unknown');
+        } catch (fallbackErr) {
+          const fallbackStatus = this.getStatusCode(fallbackErr);
+          const fallbackMessage =
+            fallbackErr instanceof Error
+              ? fallbackErr.message.toLowerCase()
+              : '';
+          if (
+            fallbackStatus === 403 ||
+            fallbackMessage.includes('permission') ||
+            fallbackMessage.includes('forbidden')
+          ) {
+            // Both permission paths failed.
+            throw new GSCPermissionError(siteUrl ?? 'unknown');
+          }
+          // Preserve non-permission fallback errors (e.g. 429/5xx) so retry/classification remains accurate.
+          throw fallbackErr;
         }
       }
       this.classifyError(err, siteUrl);

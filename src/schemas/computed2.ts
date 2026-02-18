@@ -16,6 +16,7 @@ export const PageHealthDashboardSchema = SiteUrlSchema.merge(DateRangeSchema).ex
     .describe('PageSpeed strategy: mobile (default) or desktop'),
   categories: z
     .array(z.enum(PSI_CATEGORIES))
+    .min(1, 'At least one Lighthouse category is required')
     .optional()
     .default(['performance'])
     .describe('Lighthouse categories for PSI audit'),

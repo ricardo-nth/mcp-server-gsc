@@ -49,6 +49,17 @@ describe('PageHealthDashboardSchema', () => {
     expect(result.categories).toEqual(['performance', 'seo', 'accessibility']);
   });
 
+  it('rejects empty categories array', () => {
+    expect(() =>
+      PageHealthDashboardSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        url: 'https://example.com/page',
+        days: 7,
+        categories: [],
+      }),
+    ).toThrow();
+  });
+
   it('rejects invalid strategy', () => {
     expect(() =>
       PageHealthDashboardSchema.parse({
