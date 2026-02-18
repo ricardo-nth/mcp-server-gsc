@@ -6,7 +6,7 @@ import {
   CannibalizationResolverSchema,
   DropAlertsSchema,
 } from '../schemas/computed2.js';
-import { resolveDateRange, comparePeriods } from '../utils/dates.js';
+import { resolveDateRange, comparePeriods, rollingWindows } from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
@@ -259,43 +259,65 @@ export async function handleSerpFeatureTracking(
   const args = SerpFeatureTrackingSchema.parse(raw);
   const { startDate, endDate } = resolveDateRange(args);
 
-  const response = await service.searchAnalytics(args.siteUrl, {
-    startDate,
-    endDate,
-    dimensions: ['searchAppearance', 'date'],
-    rowLimit: args.rowLimit,
-  });
+  // GSC API constraint: searchAppearance cannot be combined with other dimensions.
+  // Use rolling 7-day windows to provide weekly trend data instead of daily.
+  const totalDays =
+    Math.ceil(
+      (new Date(endDate).getTime() - new Date(startDate).getTime()) /
+        (1000 * 60 * 60 * 24),
+    ) + 1;
+  const windowDays = Math.min(7, totalDays);
+  const windows = rollingWindows(totalDays, windowDays);
 
-  const rows =
-    (response.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
+  // One API call per window, each with searchAppearance dimension only
+  const windowResults = await Promise.all(
+    windows.map((w) =>
+      service
+        .searchAnalytics(args.siteUrl, {
+          startDate: w.startDate,
+          endDate: w.endDate,
+          dimensions: ['searchAppearance'],
+          rowLimit: args.rowLimit,
+        })
+        .then((res) => ({
+          window: w,
+          rows: (res.data as { rows?: SearchAnalyticsRow[] }).rows ?? [],
+        })),
+    ),
+  );
 
-  // Pivot: group by searchAppearance, then by date
+  // Pivot: group by searchAppearance, then by window period
   const featureMap = new Map<
     string,
-    Map<string, { clicks: number; impressions: number; ctr: number; position: number }>
+    Array<{
+      period: string;
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    }>
   >();
 
-  for (const row of rows) {
-    const feature = row.keys?.[0] ?? 'unknown';
-    const date = row.keys?.[1] ?? 'unknown';
-
-    if (!featureMap.has(feature)) featureMap.set(feature, new Map());
-    featureMap.get(feature)!.set(date, {
-      clicks: row.clicks ?? 0,
-      impressions: row.impressions ?? 0,
-      ctr: Number(((row.ctr ?? 0) * 100).toFixed(2)),
-      position: Number((row.position ?? 0).toFixed(1)),
-    });
+  for (const { window, rows } of windowResults) {
+    const periodLabel = `${window.startDate}/${window.endDate}`;
+    for (const row of rows) {
+      const feature = row.keys?.[0] ?? 'unknown';
+      if (!featureMap.has(feature)) featureMap.set(feature, []);
+      featureMap.get(feature)!.push({
+        period: periodLabel,
+        clicks: row.clicks ?? 0,
+        impressions: row.impressions ?? 0,
+        ctr: Number(((row.ctr ?? 0) * 100).toFixed(2)),
+        position: Number((row.position ?? 0).toFixed(1)),
+      });
+    }
   }
 
   const features = Array.from(featureMap.entries())
-    .map(([feature, dateMap]) => {
-      const daily = Array.from(dateMap.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([date, metrics]) => ({ date, ...metrics }));
-
-      const totalClicks = daily.reduce((s, d) => s + d.clicks, 0);
-      const totalImpressions = daily.reduce((s, d) => s + d.impressions, 0);
+    .map(([feature, periods]) => {
+      const sorted = periods.sort((a, b) => a.period.localeCompare(b.period));
+      const totalClicks = sorted.reduce((s, d) => s + d.clicks, 0);
+      const totalImpressions = sorted.reduce((s, d) => s + d.impressions, 0);
 
       return {
         feature,
@@ -305,8 +327,8 @@ export async function handleSerpFeatureTracking(
           totalImpressions > 0
             ? Number(((totalClicks / totalImpressions) * 100).toFixed(2))
             : 0,
-        daysWithData: daily.length,
-        daily,
+        periodsWithData: sorted.length,
+        trend: sorted,
       };
     })
     .sort((a, b) => b.totalClicks - a.totalClicks);
@@ -314,6 +336,8 @@ export async function handleSerpFeatureTracking(
   return jsonResult({
     siteUrl: args.siteUrl,
     dateRange: { startDate, endDate },
+    windowDays,
+    totalWindows: windows.length,
     totalFeatures: features.length,
     features,
   });
