@@ -335,6 +335,7 @@ export class SearchConsoleService {
           category: params.categories,
           strategy: params.strategy,
           locale: params.locale,
+          ...(this.apiKey ? { key: this.apiKey } : {}),
         });
       } catch (err) {
         this.classifyError(err, params.url);

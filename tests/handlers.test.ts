@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleComparePeriods } from '../src/tools/computed.js';
 import { handleDetectQuickWins } from '../src/tools/analytics.js';
-import { handlePageHealthDashboard } from '../src/tools/computed2.js';
+import { handlePageHealthDashboard, handleSerpFeatureTracking } from '../src/tools/computed2.js';
 import { handlePageSpeedInsights } from '../src/tools/pagespeed.js';
 import type { SearchConsoleService } from '../src/service.js';
 import type { ToolResult } from '../src/utils/types.js';
@@ -174,5 +174,54 @@ describe('Tool handlers', () => {
     const payload = parseResult(result);
 
     expect(payload.url).toBe('https://example.com/page');
+  });
+
+  it('serp_feature_tracking preserves explicit date ranges in chunked windows', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            rows: [{ keys: ['FAQ rich results'], clicks: 10, impressions: 100, ctr: 0.1 }],
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            rows: [{ keys: ['FAQ rich results'], clicks: 4, impressions: 40, ctr: 0.1 }],
+          },
+        }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleSerpFeatureTracking(service, {
+      siteUrl: 'sc-domain:example.com',
+      startDate: '2026-01-01',
+      endDate: '2026-01-10',
+    });
+    const payload = parseResult(result);
+    const features = payload.features as Array<Record<string, unknown>>;
+    const trend = (features[0]?.trend ?? []) as Array<Record<string, unknown>>;
+
+    expect((service.searchAnalytics as ReturnType<typeof vi.fn>).mock.calls).toEqual([
+      [
+        'sc-domain:example.com',
+        {
+          startDate: '2026-01-01',
+          endDate: '2026-01-07',
+          dimensions: ['searchAppearance'],
+          rowLimit: 5000,
+        },
+      ],
+      [
+        'sc-domain:example.com',
+        {
+          startDate: '2026-01-08',
+          endDate: '2026-01-10',
+          dimensions: ['searchAppearance'],
+          rowLimit: 5000,
+        },
+      ],
+    ]);
+    expect(payload.totalWindows).toBe(2);
+    expect(trend.map((item) => item.period)).toEqual(['2026-01-01/2026-01-07', '2026-01-08/2026-01-10']);
   });
 });
