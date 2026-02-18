@@ -37,6 +37,12 @@ describe('MobileFriendlyTestSchema', () => {
     const result = MobileFriendlyTestSchema.parse({ url: 'https://example.com/', requestScreenshot: true });
     expect(result.requestScreenshot).toBe(true);
   });
+
+  it('rejects malformed URL values', () => {
+    expect(() => MobileFriendlyTestSchema.parse({ url: 'example.com/page' })).toThrow(
+      /fully-qualified URL/,
+    );
+  });
 });
 
 describe('PageSpeedInsightsSchema', () => {
@@ -68,6 +74,12 @@ describe('PageSpeedInsightsSchema', () => {
     expect(() =>
       PageSpeedInsightsSchema.parse({ url: 'https://example.com/', strategy: 'tablet' }),
     ).toThrow();
+  });
+
+  it('rejects malformed URL values', () => {
+    expect(() => PageSpeedInsightsSchema.parse({ url: 'example.com/page' })).toThrow(
+      /fully-qualified URL/,
+    );
   });
 });
 
@@ -126,6 +138,12 @@ describe('CrUX schemas', () => {
   it('CrUXQuerySchema accepts origin', () => {
     const result = CrUXQuerySchema.parse({ origin: 'https://example.com' });
     expect(result.origin).toBe('https://example.com');
+  });
+
+  it('CrUXQuerySchema rejects malformed origin', () => {
+    expect(() => CrUXQuerySchema.parse({ origin: 'example.com' })).toThrow(
+      /fully-qualified origin URL/,
+    );
   });
 
   it('CrUXQuerySchema rejects payloads with both url and origin', () => {

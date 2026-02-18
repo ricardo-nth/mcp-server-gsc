@@ -48,4 +48,30 @@ describe('SearchConsoleService error classification', () => {
       }),
     ).rejects.toBeInstanceOf(GSCPermissionError);
   });
+
+  it('indexInspect converts response.status 403 failures into GSCPermissionError', async () => {
+    const service = new SearchConsoleService('/tmp/fake-creds.json');
+    const permissionError = Object.assign(new Error('forbidden'), {
+      response: { status: 403 },
+    });
+
+    (service as unknown as { getSearchConsole: () => Promise<unknown> }).getSearchConsole =
+      async () =>
+        ({
+          urlInspection: {
+            index: {
+              inspect: async () => {
+                throw permissionError;
+              },
+            },
+          },
+        });
+
+    await expect(
+      service.indexInspect({
+        siteUrl: 'sc-domain:example.com',
+        inspectionUrl: 'https://example.com/page',
+      }),
+    ).rejects.toBeInstanceOf(GSCPermissionError);
+  });
 });

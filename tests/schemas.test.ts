@@ -88,6 +88,16 @@ describe('SearchAnalyticsSchema', () => {
       }),
     ).toThrow();
   });
+
+  it('rejects invalid date format', () => {
+    expect(() =>
+      SearchAnalyticsSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        startDate: '2025/01/01',
+        endDate: '2025-01-31',
+      }),
+    ).toThrow();
+  });
 });
 
 describe('EnhancedSearchAnalyticsSchema', () => {
@@ -117,6 +127,26 @@ describe('EnhancedSearchAnalyticsSchema', () => {
     });
     expect(result.regexFilter).toBe('typescript|javascript');
   });
+
+  it('defaults maxRows to 25000', () => {
+    const result = EnhancedSearchAnalyticsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      startDate: '2025-01-01',
+      endDate: '2025-01-31',
+    });
+    expect(result.maxRows).toBe(25000);
+  });
+
+  it('rejects maxRows above 100000', () => {
+    expect(() =>
+      EnhancedSearchAnalyticsSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        startDate: '2025-01-01',
+        endDate: '2025-01-31',
+        maxRows: 100001,
+      }),
+    ).toThrow();
+  });
 });
 
 describe('QuickWinsSchema', () => {
@@ -130,6 +160,7 @@ describe('QuickWinsSchema', () => {
     expect(result.maxCtr).toBe(2.0);
     expect(result.positionRangeMin).toBe(4);
     expect(result.positionRangeMax).toBe(10);
+    expect(result.maxRows).toBe(25000);
   });
 });
 
@@ -140,6 +171,15 @@ describe('IndexInspectSchema', () => {
       inspectionUrl: 'https://example.com/page',
     });
     expect(result.languageCode).toBe('en-US');
+  });
+
+  it('rejects invalid inspection URLs', () => {
+    expect(() =>
+      IndexInspectSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        inspectionUrl: 'not-a-url',
+      }),
+    ).toThrow(/fully-qualified URL/);
   });
 });
 

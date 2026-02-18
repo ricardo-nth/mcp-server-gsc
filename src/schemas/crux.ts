@@ -15,10 +15,12 @@ const CRUX_METRICS = [
 const cruxFields = {
   url: z
     .string()
+    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
     .optional()
     .describe('A specific URL to query. Provide either url or origin, not both.'),
   origin: z
     .string()
+    .url('Must be a fully-qualified origin URL (e.g. https://example.com)')
     .optional()
     .describe('An origin to query (e.g. "https://example.com"). Provide either url or origin, not both.'),
   formFactor: z

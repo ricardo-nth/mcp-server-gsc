@@ -10,7 +10,8 @@ import { z } from 'zod';
 // @ts-ignore — no types shipped
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
-import { SearchConsoleService } from './service.js';
+import { GSCError, SearchConsoleService } from './service.js';
+import { errorResult } from './utils/types.js';
 
 // Schemas
 import {
@@ -126,13 +127,13 @@ const TOOLS = [
   {
     name: 'enhanced_search_analytics',
     description:
-      'Advanced search analytics with regex filters, up to 25K rows, and optional quick-wins detection',
+      'Advanced search analytics with regex filters, optional auto-pagination up to 100K rows, and optional quick-wins detection',
     inputSchema: zodToJsonSchema(EnhancedSearchAnalyticsSchema),
   },
   {
     name: 'detect_quick_wins',
     description:
-      'Find SEO quick-win opportunities: high-impression, low-CTR queries in striking distance (positions 4-10)',
+      'Find SEO quick-win opportunities: high-impression, low-CTR queries in striking distance (positions 4-10), with optional auto-pagination up to 100K rows',
     inputSchema: zodToJsonSchema(QuickWinsSchema),
   },
   {
@@ -304,14 +305,15 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-
-  if (!args && name !== 'list_sites') {
-    throw new Error('Arguments are required');
-  }
-
   const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_API_KEY);
 
   try {
+    if (!args && name !== 'list_sites') {
+      return errorResult({
+        error: 'Arguments are required',
+      });
+    }
+
     switch (name) {
       case 'list_sites':
         return await handleListSites(service);
@@ -385,13 +387,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new Error(
-        `Invalid arguments: ${error.errors
-          .map((e) => `${e.path.join('.')}: ${e.message}`)
-          .join(', ')}`,
-      );
+      return errorResult({
+        error: 'Invalid arguments',
+        details: error.errors.map((e) => ({
+          path: e.path.join('.'),
+          message: e.message,
+        })),
+      });
     }
-    throw error;
+    if (error instanceof GSCError) {
+      return errorResult({
+        error: error.message,
+        code: error.code,
+        statusCode: error.statusCode,
+      });
+    }
+    if (error instanceof Error) {
+      return errorResult({
+        error: error.message,
+      });
+    }
+    return errorResult({
+      error: 'Unknown error',
+      details: String(error),
+    });
   }
 });
 

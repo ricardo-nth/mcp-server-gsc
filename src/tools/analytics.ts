@@ -5,6 +5,7 @@ import {
   QuickWinsSchema,
 } from '../schemas/analytics.js';
 import { resolveDateRange } from '../utils/dates.js';
+import { paginateSearchAnalytics } from '../utils/pagination.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
 // ---------------------------------------------------------------------------
@@ -185,8 +186,20 @@ export async function handleEnhancedSearchAnalytics(
 
   if (filterGroups.length > 0) body.dimensionFilterGroups = filterGroups;
 
-  const response = await service.searchAnalytics(args.siteUrl, body);
-  const data = response.data as { rows?: SearchAnalyticsRow[] };
+  const shouldPaginate = args.maxRows > args.rowLimit && args.startRow === undefined;
+  const rows = shouldPaginate
+    ? await paginateSearchAnalytics(service, args.siteUrl, body, {
+        maxRows: args.maxRows,
+        pageSize: args.rowLimit,
+      })
+    : null;
+
+  const data = rows
+    ? ({
+        rows,
+      } as { rows?: SearchAnalyticsRow[] })
+    : ((await service.searchAnalytics(args.siteUrl, body))
+        .data as { rows?: SearchAnalyticsRow[] });
 
   // Attach quick-wins if requested
   if (args.enableQuickWins && data.rows) {
@@ -198,11 +211,22 @@ export async function handleEnhancedSearchAnalytics(
         regexFilterApplied: !!args.regexFilter,
         quickWinsEnabled: true,
         rowLimit: args.rowLimit,
+        maxRows: args.maxRows,
+        autoPaginated: shouldPaginate,
       },
     });
   }
 
-  return jsonResult(data);
+  return jsonResult({
+    ...data,
+    enhancedFeatures: {
+      regexFilterApplied: !!args.regexFilter,
+      quickWinsEnabled: false,
+      rowLimit: args.rowLimit,
+      maxRows: args.maxRows,
+      autoPaginated: shouldPaginate,
+    },
+  });
 }
 
 export async function handleDetectQuickWins(
@@ -216,17 +240,18 @@ export async function handleDetectQuickWins(
     startDate,
     endDate,
     dimensions: ['query', 'page'],
-    rowLimit: 25000,
   };
 
-  const response = await service.searchAnalytics(args.siteUrl, body);
-  const data = response.data as { rows?: SearchAnalyticsRow[] };
+  const rows = await paginateSearchAnalytics(service, args.siteUrl, body, {
+    maxRows: args.maxRows,
+    pageSize: 25000,
+  });
 
-  if (!data.rows) {
+  if (rows.length === 0) {
     return jsonResult({ message: 'No data available for quick wins analysis' });
   }
 
-  const quickWins = detectQuickWins(data.rows, {
+  const quickWins = detectQuickWins(rows, {
     minImpressions: args.minImpressions,
     maxCtr: args.maxCtr,
     positionRangeMin: args.positionRangeMin,
@@ -242,5 +267,7 @@ export async function handleDetectQuickWins(
       positionRangeMin: args.positionRangeMin,
       positionRangeMax: args.positionRangeMax,
     },
+    rowsAnalyzed: rows.length,
+    maxRows: args.maxRows,
   });
 }

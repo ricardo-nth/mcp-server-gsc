@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleComparePeriods } from '../src/tools/computed.js';
+import { handleDetectQuickWins } from '../src/tools/analytics.js';
 import { handlePageHealthDashboard } from '../src/tools/computed2.js';
 import type { SearchConsoleService } from '../src/service.js';
 import type { ToolResult } from '../src/utils/types.js';
@@ -46,6 +47,34 @@ describe('Tool handlers', () => {
     expect((lost?.delta as Record<string, number>).clicks).toBe(-40);
   });
 
+  it('compare_periods serializes infinite percentage deltas as strings', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            rows: [{ keys: ['new'], clicks: 10, impressions: 100, ctr: 0.1, position: 3 }],
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            rows: [],
+          },
+        }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleComparePeriods(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      rowLimit: 1000,
+    });
+    const payload = parseResult(result);
+    const comparisons = payload.comparisons as Array<Record<string, unknown>>;
+    const fresh = comparisons.find((row) => (row.keys as string[])[0] === 'new');
+
+    expect((fresh?.delta as Record<string, unknown>).clicksPct).toBe('Infinity');
+  });
+
   it('page_health_dashboard reports CrUX errors instead of returning null silently', async () => {
     const cruxError = new Error(
       'GOOGLE_CLOUD_API_KEY environment variable is required for CrUX API tools.',
@@ -83,5 +112,46 @@ describe('Tool handlers', () => {
     const crux = payload.crux as Record<string, string>;
 
     expect(crux.error).toContain('GOOGLE_CLOUD_API_KEY');
+  });
+
+  it('detect_quick_wins paginates when maxRows exceeds 25K', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            rows: Array.from({ length: 25000 }, (_, i) => ({
+              keys: [`query-${i}`, `https://example.com/${i}`],
+              clicks: 1,
+              impressions: 100,
+              ctr: 0.01,
+              position: 5,
+            })),
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            rows: [
+              {
+                keys: ['extra-query', 'https://example.com/extra'],
+                clicks: 1,
+                impressions: 100,
+                ctr: 0.01,
+                position: 5,
+              },
+            ],
+          },
+        }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleDetectQuickWins(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      maxRows: 26000,
+    });
+    const payload = parseResult(result);
+
+    expect((service.searchAnalytics as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+    expect(payload.rowsAnalyzed).toBe(25001);
   });
 });

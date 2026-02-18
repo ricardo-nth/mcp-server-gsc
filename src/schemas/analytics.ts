@@ -91,6 +91,15 @@ export const EnhancedSearchAnalyticsSchema = SearchAnalyticsSchema.extend({
     })
     .optional()
     .describe('Custom thresholds for quick-wins detection'),
+  maxRows: z
+    .number()
+    .min(1)
+    .max(100000)
+    .optional()
+    .default(25000)
+    .describe(
+      'Maximum total rows to fetch with auto-pagination. Values above rowLimit fetch additional pages (up to 100000).',
+    ),
 });
 
 /** detect_quick_wins tool schema */
@@ -99,6 +108,15 @@ export const QuickWinsSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
   maxCtr: z.number().default(2.0).describe('Max CTR % threshold'),
   positionRangeMin: z.number().default(4).describe('Min position'),
   positionRangeMax: z.number().default(10).describe('Max position'),
+  maxRows: z
+    .number()
+    .min(1)
+    .max(100000)
+    .optional()
+    .default(25000)
+    .describe(
+      'Maximum total rows to fetch with auto-pagination (default 25000, max 100000).',
+    ),
 });
 
 export type SearchAnalyticsInput = z.infer<typeof SearchAnalyticsSchema>;

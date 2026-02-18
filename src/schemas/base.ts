@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+const DateStringSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
+  .refine((value) => {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    return (
+      !Number.isNaN(parsed.getTime()) &&
+      parsed.toISOString().slice(0, 10) === value
+    );
+  }, 'Date must be a valid calendar date');
+
 /** Shared siteUrl field used across most tools */
 export const SiteUrlSchema = z.object({
   siteUrl: z
@@ -14,8 +25,8 @@ export const SiteUrlSchema = z.object({
  * relative range ending yesterday. If `days` is provided, it takes precedence.
  */
 export const DateRangeSchema = z.object({
-  startDate: z.string().optional().describe('Start date (YYYY-MM-DD). Optional if `days` is provided.'),
-  endDate: z.string().optional().describe('End date (YYYY-MM-DD). Optional if `days` is provided.'),
+  startDate: DateStringSchema.optional().describe('Start date (YYYY-MM-DD). Optional if `days` is provided.'),
+  endDate: DateStringSchema.optional().describe('End date (YYYY-MM-DD). Optional if `days` is provided.'),
   days: z
     .number()
     .min(1)
