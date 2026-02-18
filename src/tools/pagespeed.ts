@@ -19,7 +19,7 @@ export async function handlePageSpeedInsights(
   const loadingExperience = data.loadingExperience;
 
   const result: Record<string, unknown> = {
-    url: data.id,
+    url: data.id ?? args.url,
     analysisUTCTimestamp: data.analysisUTCTimestamp,
   };
 

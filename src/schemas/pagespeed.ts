@@ -7,6 +7,7 @@ const PSI_STRATEGIES = ['mobile', 'desktop'] as const;
 export const PageSpeedInsightsSchema = z.object({
   url: z
     .string()
+    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
     .describe('The URL to run PageSpeed Insights on'),
   categories: z
     .array(z.enum(PSI_CATEGORIES))

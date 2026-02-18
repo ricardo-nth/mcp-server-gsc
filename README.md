@@ -73,8 +73,8 @@ Or run from source:
 |------|-------------|
 | `list_sites` | List all GSC properties accessible to the service account |
 | `search_analytics` | Query clicks/impressions/CTR/position with filters |
-| `enhanced_search_analytics` | Same + regex filters, quick-wins detection |
-| `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance |
+| `enhanced_search_analytics` | Same + regex filters, quick-wins detection, optional auto-pagination |
+| `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance with optional auto-pagination |
 | `index_inspect` | Check indexing status, crawl info, rich results for a URL |
 | `list_sitemaps` | List submitted sitemaps |
 | `get_sitemap` | Get details of a specific sitemap |
@@ -116,6 +116,8 @@ Or run from source:
 **Data freshness** — set `dataState: "all"` on analytics tools for fresh (hours-old) data.
 
 **Search types** — `web`, `image`, `video`, `news`, `discover`, `googleNews`.
+
+**Auto-pagination** — `enhanced_search_analytics` and `detect_quick_wins` accept `maxRows` (up to 100000) to fetch beyond the 25K per-request API cap.
 
 ## Development
 

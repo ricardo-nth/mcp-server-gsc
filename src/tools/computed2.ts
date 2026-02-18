@@ -436,8 +436,8 @@ export async function handleCannibalizationResolver(
         ...(recommendation ? { recommendation } : {}),
       };
     })
-    .filter(Boolean)
-    .sort((a, b) => b!.totalImpressions - a!.totalImpressions);
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .sort((a, b) => b.totalImpressions - a.totalImpressions);
 
   return jsonResult({
     siteUrl: args.siteUrl,

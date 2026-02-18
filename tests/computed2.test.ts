@@ -49,6 +49,27 @@ describe('PageHealthDashboardSchema', () => {
     expect(result.categories).toEqual(['performance', 'seo', 'accessibility']);
   });
 
+  it('rejects empty categories array', () => {
+    expect(() =>
+      PageHealthDashboardSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        url: 'https://example.com/page',
+        days: 7,
+        categories: [],
+      }),
+    ).toThrow();
+  });
+
+  it('rejects malformed URL', () => {
+    expect(() =>
+      PageHealthDashboardSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        url: 'not-a-url',
+        days: 7,
+      }),
+    ).toThrow(/fully-qualified URL/);
+  });
+
   it('rejects invalid strategy', () => {
     expect(() =>
       PageHealthDashboardSchema.parse({

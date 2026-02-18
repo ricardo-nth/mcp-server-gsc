@@ -73,15 +73,23 @@ export interface ToolResult {
 
 /** Helper to create a JSON text result */
 export function jsonResult(data: unknown): ToolResult {
+  const serialize = (_key: string, value: unknown) => {
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      return String(value);
+    }
+    return value;
+  };
+
   return {
-    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    content: [{ type: 'text', text: JSON.stringify(data, serialize, 2) }],
   };
 }
 
 /** Helper to create an error result */
-export function errorResult(message: string): ToolResult {
+export function errorResult(error: string | Record<string, unknown>): ToolResult {
+  const payload = typeof error === 'string' ? { error } : error;
   return {
-    content: [{ type: 'text', text: JSON.stringify({ error: message }) }],
+    content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
     isError: true,
   };
 }

@@ -5,6 +5,7 @@ import { SiteUrlSchema } from './base.js';
 export const IndexInspectSchema = SiteUrlSchema.extend({
   inspectionUrl: z
     .string()
+    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
     .describe(
       'Fully-qualified URL to inspect. Must be under the property specified in siteUrl',
     ),

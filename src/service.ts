@@ -138,11 +138,27 @@ export class SearchConsoleService {
   /**
    * Classify Google API errors into actionable custom error types.
    */
+  private getStatusCode(err: unknown): number | undefined {
+    if (typeof err === 'object' && err !== null) {
+      const e = err as Record<string, unknown>;
+      if (typeof e.code === 'number') return e.code;
+      if (typeof e.status === 'number') return e.status;
+      if (
+        typeof e.response === 'object' &&
+        e.response !== null &&
+        typeof (e.response as Record<string, unknown>).status === 'number'
+      ) {
+        return (e.response as Record<string, unknown>).status as number;
+      }
+    }
+    return undefined;
+  }
+
   private classifyError(err: unknown, context?: string): never {
     if (!(err instanceof Error)) throw err;
 
     const msg = err.message.toLowerCase();
-    const status = (err as unknown as Record<string, unknown>).code as number | undefined;
+    const status = this.getStatusCode(err);
 
     if (status === 401 || msg.includes('authentication') || msg.includes('credentials')) {
       throw new GSCAuthError();
@@ -150,7 +166,12 @@ export class SearchConsoleService {
     if (status === 429 || msg.includes('quota') || msg.includes('rate limit')) {
       throw new GSCQuotaError();
     }
-    if (status === 403 || msg.includes('permission')) {
+    if (
+      status === 403 ||
+      msg.includes('permission') ||
+      msg.includes('forbidden') ||
+      msg.includes('not authorized')
+    ) {
       throw new GSCPermissionError(context ?? 'unknown');
     }
 
@@ -165,15 +186,31 @@ export class SearchConsoleService {
     try {
       return await operation();
     } catch (err) {
+      const status = this.getStatusCode(err);
       if (
-        err instanceof Error &&
-        err.message.toLowerCase().includes('permission')
+        status === 403 ||
+        (err instanceof Error &&
+          (err.message.toLowerCase().includes('permission') ||
+            err.message.toLowerCase().includes('forbidden')))
       ) {
         try {
           return await fallback();
-        } catch {
-          // Both failed — throw actionable error
-          throw new GSCPermissionError(siteUrl ?? 'unknown');
+        } catch (fallbackErr) {
+          const fallbackStatus = this.getStatusCode(fallbackErr);
+          const fallbackMessage =
+            fallbackErr instanceof Error
+              ? fallbackErr.message.toLowerCase()
+              : '';
+          if (
+            fallbackStatus === 403 ||
+            fallbackMessage.includes('permission') ||
+            fallbackMessage.includes('forbidden')
+          ) {
+            // Both permission paths failed.
+            throw new GSCPermissionError(siteUrl ?? 'unknown');
+          }
+          // Preserve non-permission fallback errors (e.g. 429/5xx) so retry/classification remains accurate.
+          throw fallbackErr;
         }
       }
       this.classifyError(err, siteUrl);

@@ -88,7 +88,7 @@ export const DiffKeywordsSchema = SiteUrlSchema.extend({
 /** batch_inspect tool schema */
 export const BatchInspectSchema = SiteUrlSchema.extend({
   urls: z
-    .array(z.string())
+    .array(z.string().url('Each URL must be fully-qualified (e.g. https://example.com/page)'))
     .min(1)
     .max(100)
     .describe('URLs to inspect (max 100)'),

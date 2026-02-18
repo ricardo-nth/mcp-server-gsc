@@ -142,6 +142,15 @@ describe('Computed schemas', () => {
     expect(result.languageCode).toBe('en-US');
   });
 
+  it('BatchInspectSchema rejects malformed URLs in array', () => {
+    expect(() =>
+      BatchInspectSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        urls: ['https://example.com/valid', 'not-a-url'],
+      }),
+    ).toThrow(/fully-qualified/);
+  });
+
   it('CtrAnalysisSchema accepts days as alternative to dates', () => {
     const result = CtrAnalysisSchema.parse({
       siteUrl: 'sc-domain:example.com',

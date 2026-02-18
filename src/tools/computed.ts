@@ -271,8 +271,24 @@ export async function handleCannibalization(
           })),
       };
     })
-    .filter(Boolean)
-    .sort((a, b) => b!.totalImpressions - a!.totalImpressions);
+    .filter(
+      (
+        item,
+      ): item is {
+        query: string;
+        pageCount: number;
+        totalImpressions: number;
+        positionVariance: number;
+        pages: Array<{
+          page: string;
+          clicks: number;
+          impressions: number;
+          ctr: number;
+          position: number;
+        }>;
+      } => item !== null,
+    )
+    .sort((a, b) => b.totalImpressions - a.totalImpressions);
 
   return jsonResult({
     dateRange: { startDate, endDate },

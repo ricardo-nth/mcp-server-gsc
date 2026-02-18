@@ -8,6 +8,7 @@ const PSI_STRATEGIES = ['mobile', 'desktop'] as const;
 export const PageHealthDashboardSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
   url: z
     .string()
+    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
     .describe('The specific page URL to check (full URL including protocol)'),
   strategy: z
     .enum(PSI_STRATEGIES)
@@ -16,6 +17,7 @@ export const PageHealthDashboardSchema = SiteUrlSchema.merge(DateRangeSchema).ex
     .describe('PageSpeed strategy: mobile (default) or desktop'),
   categories: z
     .array(z.enum(PSI_CATEGORIES))
+    .min(1, 'At least one Lighthouse category is required')
     .optional()
     .default(['performance'])
     .describe('Lighthouse categories for PSI audit'),
