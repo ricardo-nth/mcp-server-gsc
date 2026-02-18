@@ -39,6 +39,13 @@ import { MobileFriendlyTestSchema } from './schemas/mobilefriendly.js';
 import { PageSpeedInsightsSchema } from './schemas/pagespeed.js';
 import { IndexingPublishSchema, IndexingStatusSchema } from './schemas/indexing.js';
 import { CrUXQuerySchema, CrUXHistorySchema } from './schemas/crux.js';
+import {
+  PageHealthDashboardSchema,
+  IndexingHealthReportSchema,
+  SerpFeatureTrackingSchema,
+  CannibalizationResolverSchema,
+  DropAlertsSchema,
+} from './schemas/computed2.js';
 
 // Tool handlers
 import {
@@ -68,6 +75,13 @@ import { handleMobileFriendlyTest } from './tools/mobilefriendly.js';
 import { handlePageSpeedInsights } from './tools/pagespeed.js';
 import { handleIndexingPublish, handleIndexingStatus } from './tools/indexing.js';
 import { handleCrUXQuery, handleCrUXHistory } from './tools/crux.js';
+import {
+  handlePageHealthDashboard,
+  handleIndexingHealthReport,
+  handleSerpFeatureTracking,
+  handleCannibalizationResolver,
+  handleDropAlerts,
+} from './tools/computed2.js';
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -89,7 +103,7 @@ const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY;
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-  { name: 'mcp-server-gsc-pro', version: '1.1.0' },
+  { name: 'mcp-server-gsc-pro', version: '1.2.0' },
   { capabilities: { tools: {} } },
 );
 
@@ -189,6 +203,37 @@ const TOOLS = [
     description:
       'Compare performance across search types (web, image, video, discover, news) in a single call',
     inputSchema: zodToJsonSchema(SearchTypeBreakdownSchema),
+  },
+  // --- Computed intelligence v2 ---
+  {
+    name: 'page_health_dashboard',
+    description:
+      'Comprehensive page health check combining URL Inspection (indexing status, canonical), Search Analytics (clicks, impressions, CTR, position), PageSpeed Insights (Lighthouse scores), and CrUX (real-user Core Web Vitals) in a single call. CrUX is optional (requires GOOGLE_CLOUD_API_KEY).',
+    inputSchema: zodToJsonSchema(PageHealthDashboardSchema),
+  },
+  {
+    name: 'indexing_health_report',
+    description:
+      'Batch-check indexing status across site pages. Gets URLs from top analytics pages (default) or sitemaps, rate-limited inspects each, and aggregates: indexed count, not-indexed count, errors, by coverage state. Max 100 URLs per call.',
+    inputSchema: zodToJsonSchema(IndexingHealthReportSchema),
+  },
+  {
+    name: 'serp_feature_tracking',
+    description:
+      'Track SERP features (rich results, FAQs, videos, AMP, etc.) over time using the searchAppearance dimension. Shows daily trends per feature type.',
+    inputSchema: zodToJsonSchema(SerpFeatureTrackingSchema),
+  },
+  {
+    name: 'cannibalization_resolver',
+    description:
+      'Detect keyword cannibalization AND recommend actions: identifies the winner URL per query and suggests redirect, consolidate, or differentiate for competing pages based on traffic distribution.',
+    inputSchema: zodToJsonSchema(CannibalizationResolverSchema),
+  },
+  {
+    name: 'drop_alerts',
+    description:
+      'Detect pages with significant traffic drops by comparing recent vs previous period. Flags pages exceeding a configurable % threshold (default 50%), sorted by absolute click loss.',
+    inputSchema: zodToJsonSchema(DropAlertsSchema),
   },
   // --- Sites CRUD ---
   {
@@ -301,6 +346,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await handleCtrAnalysis(service, args);
       case 'search_type_breakdown':
         return await handleSearchTypeBreakdown(service, args);
+      // Computed intelligence v2
+      case 'page_health_dashboard':
+        return await handlePageHealthDashboard(service, args);
+      case 'indexing_health_report':
+        return await handleIndexingHealthReport(service, args);
+      case 'serp_feature_tracking':
+        return await handleSerpFeatureTracking(service, args);
+      case 'cannibalization_resolver':
+        return await handleCannibalizationResolver(service, args);
+      case 'drop_alerts':
+        return await handleDropAlerts(service, args);
       // Sites CRUD
       case 'get_site':
         return await handleGetSite(service, args);
