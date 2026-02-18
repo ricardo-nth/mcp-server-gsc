@@ -90,24 +90,28 @@ export async function handleComparePeriods(
   const dataA = (resA.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
   const dataB = (resB.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
 
-  // Index period B by key
+  // Index both periods by key
+  const mapA = new Map<string, SearchAnalyticsRow>();
+  for (const row of dataA) mapA.set(rowKey(row), row);
+
   const mapB = new Map<string, SearchAnalyticsRow>();
   for (const row of dataB) mapB.set(rowKey(row), row);
 
-  const comparisons = dataA.map((rowA) => {
-    const key = rowKey(rowA);
+  const allKeys = new Set([...mapA.keys(), ...mapB.keys()]);
+  const comparisons = Array.from(allKeys).map((key) => {
+    const rowA = mapA.get(key);
     const rowB = mapB.get(key);
-    const clicksA = rowA.clicks ?? 0;
+    const clicksA = rowA?.clicks ?? 0;
     const clicksB = rowB?.clicks ?? 0;
-    const imprA = rowA.impressions ?? 0;
+    const imprA = rowA?.impressions ?? 0;
     const imprB = rowB?.impressions ?? 0;
-    const ctrA = (rowA.ctr ?? 0) * 100;
+    const ctrA = (rowA?.ctr ?? 0) * 100;
     const ctrB = (rowB?.ctr ?? 0) * 100;
-    const posA = rowA.position ?? 0;
+    const posA = rowA?.position ?? 0;
     const posB = rowB?.position ?? 0;
 
     return {
-      keys: rowA.keys,
+      keys: rowA?.keys ?? rowB?.keys ?? [],
       periodA: { clicks: clicksA, impressions: imprA, ctr: Number(ctrA.toFixed(2)), position: Number(posA.toFixed(1)) },
       periodB: { clicks: clicksB, impressions: imprB, ctr: Number(ctrB.toFixed(2)), position: Number(posB.toFixed(1)) },
       delta: {

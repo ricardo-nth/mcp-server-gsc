@@ -31,8 +31,11 @@ const cruxFields = {
     .describe('Specific metrics to return. Omit for all available metrics.'),
 };
 
-const cruxRefine = (data: { url?: string; origin?: string }) => data.url || data.origin;
-const cruxRefineMessage = { message: 'Either "url" or "origin" must be provided' };
+const cruxRefine = (data: { url?: string; origin?: string }) =>
+  Boolean(data.url) !== Boolean(data.origin);
+const cruxRefineMessage = {
+  message: 'Provide exactly one of "url" or "origin"',
+};
 
 /** crux_query tool schema */
 export const CrUXQuerySchema = z.object(cruxFields).refine(cruxRefine, cruxRefineMessage);

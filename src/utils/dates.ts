@@ -1,12 +1,22 @@
 /** Format a Date as YYYY-MM-DD */
 export function formatDate(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const year = d.getUTCFullYear();
+  const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /** Get a date N days ago from today (or from a reference date) */
 export function daysAgo(n: number, from?: Date): Date {
-  const d = from ? new Date(from) : new Date();
-  d.setDate(d.getDate() - n);
+  const base = from ? new Date(from) : new Date();
+  const d = new Date(
+    Date.UTC(
+      base.getUTCFullYear(),
+      base.getUTCMonth(),
+      base.getUTCDate(),
+    ),
+  );
+  d.setUTCDate(d.getUTCDate() - n);
   return d;
 }
 

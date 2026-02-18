@@ -186,8 +186,12 @@ export class SearchConsoleService {
 
   async listSites() {
     return withRetry(async () => {
-      const wm = await this.getWebmasters();
-      return wm.sites.list();
+      try {
+        const wm = await this.getWebmasters();
+        return await wm.sites.list();
+      } catch (err) {
+        this.classifyError(err);
+      }
     });
   }
 
@@ -249,8 +253,13 @@ export class SearchConsoleService {
 
   async indexInspect(body: InspectRequest) {
     return withRetry(async () => {
-      const sc = await this.getSearchConsole();
-      return sc.urlInspection.index.inspect({ requestBody: body });
+      try {
+        const sc = await this.getSearchConsole();
+        return await sc.urlInspection.index.inspect({ requestBody: body });
+      } catch (err) {
+        const context = (body?.siteUrl ?? body?.inspectionUrl) || undefined;
+        this.classifyError(err, context);
+      }
     });
   }
 

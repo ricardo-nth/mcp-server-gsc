@@ -48,10 +48,7 @@ export async function handlePageHealthDashboard(
         categories: [...args.categories],
         strategy: args.strategy,
       }),
-      // CrUX needs API key — catch synchronous throw from getCrUX()
-      service
-        .cruxQueryRecord({ url: args.url })
-        .catch(() => null),
+      service.cruxQueryRecord({ url: args.url }),
     ]);
 
   const dashboard: Record<string, unknown> = {
@@ -124,12 +121,18 @@ export async function handlePageHealthDashboard(
     };
   }
 
-  // CrUX — .catch(() => null) above means status is always 'fulfilled';
-  // value is null when API key missing or query failed
-  if (cruxResult.status === 'fulfilled' && cruxResult.value !== null) {
+  // CrUX
+  if (cruxResult.status === 'fulfilled') {
     dashboard.crux = (cruxResult.value as { data?: unknown })?.data ?? null;
   } else {
-    dashboard.crux = null;
+    const reason = cruxResult.reason as {
+      message?: string;
+      code?: string;
+    };
+    dashboard.crux = {
+      error: reason?.message ?? 'CrUX failed',
+      ...(reason?.code ? { code: reason.code } : {}),
+    };
   }
 
   return jsonResult(dashboard);
