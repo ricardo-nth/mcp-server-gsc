@@ -25,21 +25,34 @@ Wraps the full Google Search Console API surface into MCP tools, then adds a lay
 
 ## Setup
 
-### 1. Google Service Account
+### 1. Google Service Account (required)
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create/select a project, enable the **Search Console API** and **Indexing API**
-3. Create a service account and download the JSON key
-4. In [Search Console](https://search.google.com/search-console/), add the service account email as a user for each property
-5. *(Optional)* For CrUX tools: create an API key in Cloud Console under Credentials
+2. Create or select a project
+3. Enable the **Search Console API** and **Indexing API** under [APIs & Services > Library](https://console.cloud.google.com/apis/library)
+4. Go to [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials) and create a **Service Account**
+5. Create a key for the service account (JSON format) and download it
+6. In [Google Search Console](https://search.google.com/search-console/), add the service account email as a user for each property you want to access
 
-### 2. Install
+### 2. Google Cloud API Key (optional — for CrUX tools)
+
+The `crux_query` and `crux_history` tools require a Google Cloud API key. All other 29 tools work without it.
+
+1. In the same Google Cloud project, enable the **Chrome UX Report API** — search for it in [APIs & Services > Library](https://console.cloud.google.com/apis/library) or go directly to the [Marketplace listing](https://console.cloud.google.com/marketplace/product/google/chromeuxreport.googleapis.com)
+2. Go to [APIs & Services > Credentials](https://console.cloud.google.com/apis/credentials) and click **Create Credentials > API key**
+3. Click the key name to edit it, then under **API restrictions** select **Restrict key** and choose only **Chrome UX Report API** — this limits exposure if the key leaks
+4. Leave **Application restrictions** as **None** (the key is used server-side by Node.js, not from a browser)
+5. Copy the key
+
+The CrUX API is free with a 150 queries/minute limit. No billing required. Note that CrUX only has data for sites with sufficient traffic (roughly a few thousand monthly visits) — low-traffic sites will return empty results.
+
+### 3. Install
 
 ```bash
 npm install -g mcp-server-gsc-pro
 ```
 
-### 3. Configure MCP
+### 4. Configure MCP
 
 Add to your project's `.mcp.json`:
 
@@ -58,8 +71,6 @@ Add to your project's `.mcp.json`:
 }
 ```
 
-> `GOOGLE_CLOUD_API_KEY` is optional — only needed for `crux_query` and `crux_history`. All other tools work without it.
-
 Or run from source:
 
 ```json
@@ -76,6 +87,28 @@ Or run from source:
   }
 }
 ```
+
+**Setting credentials globally** — if you use the same service account and API key across multiple projects, you can export them in your shell config (e.g. `~/.zshrc` or `~/.bashrc`) instead of repeating them in every `.mcp.json`:
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
+export GOOGLE_CLOUD_API_KEY="your-api-key-here"
+```
+
+With global exports, your `.mcp.json` simplifies to:
+
+```json
+{
+  "mcpServers": {
+    "gsc": {
+      "command": "npx",
+      "args": ["-y", "mcp-server-gsc-pro"]
+    }
+  }
+}
+```
+
+> The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
 
 ## Tools (31)
 
