@@ -128,6 +128,15 @@ describe('CrUX schemas', () => {
     expect(result.origin).toBe('https://example.com');
   });
 
+  it('CrUXQuerySchema rejects payloads with both url and origin', () => {
+    expect(() =>
+      CrUXQuerySchema.parse({
+        url: 'https://example.com/page',
+        origin: 'https://example.com',
+      }),
+    ).toThrow();
+  });
+
   it('CrUXQuerySchema accepts formFactor', () => {
     const result = CrUXQuerySchema.parse({ url: 'https://example.com/', formFactor: 'PHONE' });
     expect(result.formFactor).toBe('PHONE');
