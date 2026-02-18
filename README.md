@@ -1,16 +1,27 @@
 # mcp-server-gsc-pro
 
-Enhanced MCP server for Google Search Console. All original functionality from [mcp-server-gsc](https://github.com/ahonn/mcp-server-gsc) plus fresh data access, computed intelligence tools, and flexible date handling.
+Enhanced MCP server for Google Search Console. 31 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
 
-## What's different
+## Who this is for
 
-- **31 tools** (vs 8 original) — GSC analytics + computed intelligence + PageSpeed Insights + Indexing API + CrUX web vitals + mobile-friendly testing
-- **Fresh data** — `dataState: "all"` for data within hours, not days
-- **More search types** — `discover`, `googleNews` alongside web/image/video/news
-- **Auto-retry** — exponential backoff with jitter on 429/5xx
-- **Flexible dates** — use `days: 28` instead of calculating start/end dates
-- **Actionable errors** — `GSCAuthError`, `GSCQuotaError`, `GSCPermissionError` with fix instructions
-- **Auto-pagination** utility for >25K row queries
+Teams and individuals using AI coding agents (Claude Code, Cursor, etc.) for SEO. If you manage websites and want your AI assistant to query Search Console data, diagnose indexing issues, track performance trends, and surface actionable insights — without writing API code — this is the tool.
+
+## What it does
+
+Wraps the full Google Search Console API surface into MCP tools, then adds a layer of computed intelligence that combines multiple API calls into higher-level insights. Also integrates PageSpeed Insights, Google Indexing API, Chrome UX Report (CrUX), and mobile-friendly testing.
+
+**Raw API access** — search analytics with filtering, URL inspection, sitemaps CRUD, sites CRUD.
+
+**Computed intelligence** — period comparison with delta tracking, content decay detection, keyword cannibalization analysis, CTR benchmarking, keyword diff, batch inspection, SERP feature tracking, automated drop alerts, and page-level health dashboards that pull from 4 APIs in a single call.
+
+**Reliability** — auto-retry with exponential backoff, structured error types with fix instructions, input validation on all fields, auto-pagination for large result sets, and partial-failure tolerance on multi-API tools.
+
+## What it doesn't do
+
+- No web scraping or crawling — this is API data only
+- No content generation or optimization suggestions — it surfaces data, the AI agent interprets it
+- No Google Ads or GA4 integration
+- Indexing API notifications are officially limited to JobPosting/BroadcastEvent schema types
 
 ## Setup
 
@@ -18,9 +29,9 @@ Enhanced MCP server for Google Search Console. All original functionality from [
 
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create/select a project, enable the **Search Console API** and **Indexing API**
-3. Create a service account → download the JSON key
+3. Create a service account and download the JSON key
 4. In [Search Console](https://search.google.com/search-console/), add the service account email as a user for each property
-5. *(Optional)* For CrUX tools: create an API key in Cloud Console → Credentials
+5. *(Optional)* For CrUX tools: create an API key in Cloud Console under Credentials
 
 ### 2. Install
 
@@ -30,13 +41,14 @@ npm install -g mcp-server-gsc-pro
 
 ### 3. Configure MCP
 
-Add to your `.mcp.json` or Claude Desktop config:
+Add to your project's `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "gsc": {
-      "command": "mcp-server-gsc-pro",
+      "command": "npx",
+      "args": ["-y", "mcp-server-gsc-pro"],
       "env": {
         "GOOGLE_APPLICATION_CREDENTIALS": "/path/to/service-account-key.json",
         "GOOGLE_CLOUD_API_KEY": "your-api-key-here"
@@ -46,7 +58,7 @@ Add to your `.mcp.json` or Claude Desktop config:
 }
 ```
 
-> `GOOGLE_CLOUD_API_KEY` is optional — only needed for `crux_query` and `crux_history` tools. All other tools work without it.
+> `GOOGLE_CLOUD_API_KEY` is optional — only needed for `crux_query` and `crux_history`. All other tools work without it.
 
 Or run from source:
 
@@ -65,78 +77,95 @@ Or run from source:
 }
 ```
 
-## Tools
+## Tools (31)
 
-### Core
+### Core (9 tools)
 
 | Tool | Description |
 |------|-------------|
 | `list_sites` | List all GSC properties accessible to the service account |
-| `search_analytics` | Query clicks/impressions/CTR/position with filters |
-| `enhanced_search_analytics` | Same + regex filters, quick-wins detection, optional auto-pagination |
-| `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance with optional auto-pagination |
-| `index_inspect` | Check indexing status, crawl info, rich results for a URL |
+| `search_analytics` | Query clicks/impressions/CTR/position with filtering by page, query, country, device, search type |
+| `enhanced_search_analytics` | Same + regex filters, quick-wins detection, auto-pagination up to 100K rows |
+| `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance (positions 4-10) |
+| `index_inspect` | Check indexing status, crawl info, mobile usability, rich results for a URL |
 | `list_sitemaps` | List submitted sitemaps |
 | `get_sitemap` | Get details of a specific sitemap |
 | `submit_sitemap` | Submit a new sitemap |
 | `delete_sitemap` | Remove a sitemap |
 
-### Computed Intelligence
+### Computed Intelligence (7 tools)
+
+Single-API tools that combine multiple queries into structured analysis.
 
 | Tool | Description |
 |------|-------------|
-| `compare_periods` | Two-period side-by-side with delta + % change |
-| `detect_content_decay` | Pages losing clicks over time, sorted by loss |
-| `detect_cannibalization` | Queries with multiple competing pages |
-| `diff_keywords` | New and lost keywords between periods |
-| `batch_inspect` | Inspect up to 100 URLs (rate-limited 1/sec) |
-| `ctr_analysis` | CTR vs position benchmarks, find underperformers |
-| `search_type_breakdown` | Compare web/image/video/discover/news |
+| `compare_periods` | Two-period side-by-side comparison with delta and % change for all metrics |
+| `detect_content_decay` | Pages losing clicks over time, sorted by traffic loss |
+| `detect_cannibalization` | Queries where multiple pages compete, with position variance analysis |
+| `diff_keywords` | New and lost keywords between two time periods |
+| `batch_inspect` | Inspect up to 100 URLs for indexing status (rate-limited 1/sec) |
+| `ctr_analysis` | CTR vs position benchmarks to find underperforming queries |
+| `search_type_breakdown` | Compare performance across web/image/video/discover/news |
 
-### Multi-API Intelligence
+### Multi-API Intelligence (5 tools)
+
+Tools that combine data from multiple Google APIs in a single call, using `Promise.allSettled` for partial-failure tolerance.
 
 | Tool | Description |
 |------|-------------|
-| `page_health_dashboard` | Unified page report: inspection + analytics + PageSpeed + CrUX |
-| `indexing_health_report` | Batch indexing status for top pages with coverage stats |
-| `serp_feature_tracking` | Monitor search appearance trends over time |
-| `cannibalization_resolver` | Detect cannibalization + recommend redirect/consolidate/differentiate |
+| `page_health_dashboard` | Unified page report: URL inspection + search analytics + PageSpeed Insights + CrUX |
+| `indexing_health_report` | Batch indexing status for top pages with coverage aggregation and quota tracking |
+| `serp_feature_tracking` | Monitor search appearance trends (rich results, FAQ, etc.) over time |
+| `cannibalization_resolver` | Detect keyword cannibalization + recommend redirect/consolidate/differentiate |
 | `drop_alerts` | Automated traffic/position drop detection with configurable thresholds |
 
-### Adjacent APIs
+### Adjacent APIs (10 tools)
+
+Direct access to related Google APIs.
 
 | Tool | Description |
 |------|-------------|
 | `get_site` | Get site property details (permission level, URL) |
-| `add_site` | Add a new site property to Search Console |
-| `delete_site` | Remove a site property from Search Console |
+| `add_site` | Add a new site property |
+| `delete_site` | Remove a site property |
 | `mobile_friendly_test` | Test a URL for mobile-friendliness with optional screenshot |
-| `pagespeed_insights` | Lighthouse scores + field data (no auth required) |
+| `pagespeed_insights` | Lighthouse scores + CrUX field data (no auth required) |
 | `indexing_publish` | Notify Google of URL updates/deletions (200/day quota) |
 | `indexing_status` | Get Indexing API notification metadata for a URL |
-| `crux_query` | Core Web Vitals (LCP, CLS, INP) by URL or origin |
-| `crux_history` | 40-week rolling CWV trends by URL or origin |
+| `crux_query` | Core Web Vitals (LCP, CLS, INP, FCP, TTFB) by URL or origin |
+| `crux_history` | 40-week rolling CWV history by URL or origin |
 
-### Common Parameters
+## Common Parameters
 
-**Flexible dates** — all date-based tools accept either explicit dates or relative days:
-- `startDate` + `endDate` (YYYY-MM-DD)
-- `days` (relative, ending yesterday)
+**Flexible dates** — all date-based tools accept either:
+- `startDate` + `endDate` (YYYY-MM-DD, validated)
+- `days` (relative window ending yesterday, accounting for GSC data lag)
 
-**Data freshness** — set `dataState: "all"` on analytics tools for fresh (hours-old) data.
+**Data freshness** — set `dataState: "all"` on analytics tools for data within hours instead of the default 2-3 day lag.
 
 **Search types** — `web`, `image`, `video`, `news`, `discover`, `googleNews`.
 
-**Auto-pagination** — `enhanced_search_analytics` and `detect_quick_wins` accept `maxRows` (up to 100000) to fetch beyond the 25K per-request API cap.
+**Auto-pagination** — `enhanced_search_analytics` and `detect_quick_wins` accept `maxRows` (up to 100,000) to fetch beyond the 25K per-request API limit.
+
+**Error handling** — all errors return structured MCP payloads with `isError: true`, specific error codes (`AUTH_ERROR`, `QUOTA_ERROR`, `PERMISSION_ERROR`), and actionable messages.
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GOOGLE_APPLICATION_CREDENTIALS` | Yes | Path to service account JSON key file |
+| `GOOGLE_CLOUD_API_KEY` | No | Google Cloud API key for CrUX tools only |
 
 ## Development
 
 ```bash
 pnpm install
-pnpm build      # TypeScript compile
-pnpm test       # Run vitest
-pnpm lint       # Type check only
+pnpm build      # TypeScript compile to dist/
+pnpm test       # Vitest (119 tests)
+pnpm lint       # Type check only (tsc --noEmit)
 ```
+
+CI runs on every PR: lint + test + build across Node 18, 20, 22.
 
 ## License
 
