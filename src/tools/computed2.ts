@@ -6,7 +6,7 @@ import {
   CannibalizationResolverSchema,
   DropAlertsSchema,
 } from '../schemas/computed2.js';
-import { resolveDateRange, comparePeriods, rollingWindows } from '../utils/dates.js';
+import { resolveDateRange, comparePeriods, formatDate } from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
@@ -260,14 +260,28 @@ export async function handleSerpFeatureTracking(
   const { startDate, endDate } = resolveDateRange(args);
 
   // GSC API constraint: searchAppearance cannot be combined with other dimensions.
-  // Use rolling 7-day windows to provide weekly trend data instead of daily.
-  const totalDays =
-    Math.ceil(
-      (new Date(endDate).getTime() - new Date(startDate).getTime()) /
-        (1000 * 60 * 60 * 24),
-    ) + 1;
+  // Split the requested range into chronological 7-day chunks to preserve caller dates.
+  const start = new Date(`${startDate}T00:00:00.000Z`);
+  const end = new Date(`${endDate}T00:00:00.000Z`);
+  const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
   const windowDays = Math.min(7, totalDays);
-  const windows = rollingWindows(totalDays, windowDays);
+  const windows: Array<{ startDate: string; endDate: string }> = [];
+  let cursor = new Date(start);
+
+  while (cursor <= end) {
+    const windowStart = new Date(cursor);
+    const windowEnd = new Date(cursor);
+    windowEnd.setUTCDate(windowEnd.getUTCDate() + windowDays - 1);
+    if (windowEnd > end) {
+      windowEnd.setTime(end.getTime());
+    }
+    windows.push({
+      startDate: formatDate(windowStart),
+      endDate: formatDate(windowEnd),
+    });
+    cursor = new Date(windowEnd);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
 
   // One API call per window, each with searchAppearance dimension only
   const windowResults = await Promise.all(

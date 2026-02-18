@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   SearchConsoleService,
   GSCAuthError,
@@ -6,6 +6,28 @@ import {
 } from '../src/service.js';
 
 describe('SearchConsoleService error classification', () => {
+  it('runPageSpeed forwards GOOGLE_CLOUD_API_KEY when configured', async () => {
+    const service = new SearchConsoleService('/tmp/fake-creds.json', 'test-api-key');
+    const runPageSpeedMock = vi.fn().mockResolvedValue({ data: { id: 'result-id' } });
+
+    (service as unknown as { getPageSpeed: () => unknown }).getPageSpeed = () =>
+      ({
+        pagespeedapi: {
+          runpagespeed: runPageSpeedMock,
+        },
+      });
+
+    await service.runPageSpeed({ url: 'https://example.com', strategy: 'mobile' });
+
+    expect(runPageSpeedMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: 'test-api-key',
+        url: 'https://example.com',
+        strategy: 'mobile',
+      }),
+    );
+  });
+
   it('listSites converts auth failures into GSCAuthError', async () => {
     const service = new SearchConsoleService('/tmp/fake-creds.json');
     const authError = Object.assign(new Error('invalid credentials'), {
