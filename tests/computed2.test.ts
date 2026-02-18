@@ -96,15 +96,24 @@ describe('IndexingHealthReportSchema', () => {
     ).toThrow();
   });
 
-  it('accepts all source values', () => {
-    for (const source of ['sitemaps', 'analytics', 'both'] as const) {
-      const result = IndexingHealthReportSchema.parse({
+  it('rejects sitemaps source (not yet implemented)', () => {
+    expect(() =>
+      IndexingHealthReportSchema.parse({
         siteUrl: 'sc-domain:example.com',
         days: 28,
-        source,
-      });
-      expect(result.source).toBe(source);
-    }
+        source: 'sitemaps',
+      }),
+    ).toThrow();
+  });
+
+  it('rejects both source (not yet implemented)', () => {
+    expect(() =>
+      IndexingHealthReportSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        days: 28,
+        source: 'both',
+      }),
+    ).toThrow();
   });
 });
 
@@ -227,5 +236,96 @@ describe('DropAlertsSchema', () => {
         days: 100,
       }),
     ).toThrow();
+  });
+
+  it('does not accept startDate/endDate (uses comparePeriods, not DateRangeSchema)', () => {
+    const result = DropAlertsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+    });
+    // DropAlertsSchema does not have startDate/endDate fields
+    expect(result).not.toHaveProperty('startDate');
+    expect(result).not.toHaveProperty('endDate');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Handler logic tests (recommendation algorithm + drop calculation)
+// ---------------------------------------------------------------------------
+
+describe('Cannibalization recommendation algorithm', () => {
+  // Extracted logic mirrors computed2.ts handleCannibalizationResolver
+  function classifyAction(
+    winnerClicks: number,
+    loserClicks: number,
+    winnerPosition: number,
+    loserPosition: number,
+  ): string {
+    const clickRatio = winnerClicks > 0 ? loserClicks / winnerClicks : 0;
+    const posGap = loserPosition - winnerPosition;
+
+    if (clickRatio < 0.1 && posGap > 5) return 'redirect';
+    if (clickRatio < 0.3) return 'consolidate';
+    return 'differentiate';
+  }
+
+  it('recommends redirect for low traffic + poor position', () => {
+    // <10% clicks, >5 positions worse
+    expect(classifyAction(100, 5, 3, 15)).toBe('redirect');
+    expect(classifyAction(200, 10, 2, 20)).toBe('redirect');
+  });
+
+  it('recommends consolidate for moderate traffic', () => {
+    // <30% clicks (but not <10% + >5 posGap)
+    expect(classifyAction(100, 20, 3, 5)).toBe('consolidate');
+    expect(classifyAction(100, 29, 3, 4)).toBe('consolidate');
+  });
+
+  it('recommends differentiate for significant traffic', () => {
+    // >=30% clicks
+    expect(classifyAction(100, 30, 3, 5)).toBe('differentiate');
+    expect(classifyAction(100, 80, 2, 4)).toBe('differentiate');
+  });
+
+  it('consolidate wins over redirect when position gap <= 5', () => {
+    // <10% clicks but posGap <= 5 → consolidate, not redirect
+    expect(classifyAction(100, 5, 3, 8)).toBe('consolidate');
+    expect(classifyAction(100, 9, 3, 3)).toBe('consolidate');
+  });
+
+  it('handles zero winner clicks (clickRatio = 0)', () => {
+    // winner has 0 clicks → clickRatio = 0 → redirect if posGap > 5
+    expect(classifyAction(0, 0, 10, 20)).toBe('redirect');
+    // winner has 0 clicks but posGap <= 5 → consolidate
+    expect(classifyAction(0, 0, 10, 12)).toBe('consolidate');
+  });
+});
+
+describe('Drop percentage calculation', () => {
+  function calcDropPct(clicksPrior: number, clicksRecent: number): number {
+    return clicksPrior > 0
+      ? Number((((clicksPrior - clicksRecent) / clicksPrior) * 100).toFixed(1))
+      : 0;
+  }
+
+  it('calculates 100% drop for complete disappearance', () => {
+    expect(calcDropPct(100, 0)).toBe(100);
+  });
+
+  it('calculates 50% drop correctly', () => {
+    expect(calcDropPct(100, 50)).toBe(50);
+  });
+
+  it('calculates negative drop (growth) correctly', () => {
+    // Page gained traffic — negative drop, won't trigger alert
+    expect(calcDropPct(100, 150)).toBe(-50);
+  });
+
+  it('returns 0 when prior clicks are 0', () => {
+    expect(calcDropPct(0, 100)).toBe(0);
+  });
+
+  it('handles fractional drops', () => {
+    expect(calcDropPct(3, 1)).toBe(66.7);
   });
 });

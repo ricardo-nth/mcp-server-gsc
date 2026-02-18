@@ -29,12 +29,10 @@ export const PageHealthDashboardSchema = SiteUrlSchema.merge(DateRangeSchema).ex
 /** indexing_health_report tool schema */
 export const IndexingHealthReportSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
   source: z
-    .enum(['sitemaps', 'analytics', 'both'] as const)
+    .enum(['analytics'] as const)
     .optional()
     .default('analytics')
-    .describe(
-      'Where to get URLs: "analytics" (top pages by clicks — recommended), "sitemaps" (sitemap file paths), or "both"',
-    ),
+    .describe('URL source: "analytics" (top pages by clicks)'),
   topN: z
     .number()
     .min(1)
@@ -81,7 +79,8 @@ export const CannibalizationResolverSchema = SiteUrlSchema.merge(DateRangeSchema
     .describe('Whether to include winner/action recommendations (default true)'),
 });
 
-/** drop_alerts tool schema */
+/** drop_alerts tool schema — uses own `days` field, not DateRangeSchema,
+ *  because comparePeriods() requires a single window size, not start/end. */
 export const DropAlertsSchema = SiteUrlSchema.extend({
   threshold: z
     .number()

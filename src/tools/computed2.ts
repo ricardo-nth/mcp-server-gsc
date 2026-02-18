@@ -124,13 +124,10 @@ export async function handlePageHealthDashboard(
     };
   }
 
-  // CrUX (already caught gracefully above)
+  // CrUX — .catch(() => null) above means status is always 'fulfilled';
+  // value is null when API key missing or query failed
   if (cruxResult.status === 'fulfilled' && cruxResult.value !== null) {
     dashboard.crux = (cruxResult.value as { data?: unknown })?.data ?? null;
-  } else if (cruxResult.status === 'rejected') {
-    dashboard.crux = {
-      error: (cruxResult.reason as Error)?.message ?? 'CrUX unavailable',
-    };
   } else {
     dashboard.crux = null;
   }
@@ -148,36 +145,20 @@ export async function handleIndexingHealthReport(
 ): Promise<ToolResult> {
   const args = IndexingHealthReportSchema.parse(raw);
 
-  // Step 1: Collect URLs from source(s)
-  let urls: string[] = [];
-
-  if (args.source === 'sitemaps' || args.source === 'both') {
-    const sitemapsRes = await service.listSitemaps({ siteUrl: args.siteUrl });
-    const sitemaps =
-      (sitemapsRes.data as { sitemap?: Array<{ path?: string }> }).sitemap ?? [];
-    for (const sm of sitemaps) {
-      if (sm.path) urls.push(sm.path);
-    }
-  }
-
-  if (args.source === 'analytics' || args.source === 'both') {
-    const { startDate, endDate } = resolveDateRange(args);
-    const analyticsRes = await service.searchAnalytics(args.siteUrl, {
-      startDate,
-      endDate,
-      dimensions: ['page'],
-      rowLimit: args.topN,
-    });
-    const rows =
-      (analyticsRes.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
-    for (const row of rows) {
-      const pageUrl = row.keys?.[0];
-      if (pageUrl && !urls.includes(pageUrl)) urls.push(pageUrl);
-    }
-  }
-
-  // Cap at topN
-  urls = urls.slice(0, args.topN);
+  // Step 1: Collect URLs from top analytics pages
+  const { startDate, endDate } = resolveDateRange(args);
+  const analyticsRes = await service.searchAnalytics(args.siteUrl, {
+    startDate,
+    endDate,
+    dimensions: ['page'],
+    rowLimit: args.topN,
+  });
+  const rows =
+    (analyticsRes.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
+  const urls = rows
+    .map((row) => row.keys?.[0])
+    .filter((u): u is string => !!u)
+    .slice(0, args.topN);
 
   if (urls.length === 0) {
     return jsonResult({
@@ -241,6 +222,7 @@ export async function handleIndexingHealthReport(
     siteUrl: args.siteUrl,
     source: args.source,
     totalUrls: urls.length,
+    quotaUsed: inspections.length,
     indexed,
     notIndexed,
     inspectionErrors,
@@ -455,6 +437,7 @@ export async function handleCannibalizationResolver(
     .sort((a, b) => b!.totalImpressions - a!.totalImpressions);
 
   return jsonResult({
+    siteUrl: args.siteUrl,
     dateRange: { startDate, endDate },
     cannibalizationIssues: resolved.length,
     queries: resolved,
@@ -522,7 +505,7 @@ export async function handleDropAlerts(
         impressionsPrior: priorRow.impressions ?? 0,
         impressionsRecent: recentRow?.impressions ?? 0,
         positionPrior: Number((priorRow.position ?? 0).toFixed(1)),
-        positionRecent: Number((recentRow?.position ?? 0).toFixed(1)),
+        positionRecent: recentRow ? Number((recentRow.position ?? 0).toFixed(1)) : null,
       };
     })
     .filter((d) => d.dropPct >= args.threshold)

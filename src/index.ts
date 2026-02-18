@@ -214,7 +214,7 @@ const TOOLS = [
   {
     name: 'indexing_health_report',
     description:
-      'Batch-check indexing status across site pages. Gets URLs from top analytics pages (default) or sitemaps, rate-limited inspects each, and aggregates: indexed count, not-indexed count, errors, by coverage state. Max 100 URLs per call.',
+      'Batch-check indexing status across site pages. Gets top URLs from search analytics, rate-limited inspects each (1 req/sec), and aggregates: indexed count, not-indexed count, errors, by coverage state. Max 100 URLs per call. Reports quotaUsed for tracking against 2000/day limit.',
     inputSchema: zodToJsonSchema(IndexingHealthReportSchema),
   },
   {
