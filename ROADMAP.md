@@ -75,13 +75,13 @@ Goal: deepen SEO usefulness beyond basic KPI inspection.
 
 Goal: make multi-step audits one call away for agents.
 
-- [ ] Add `run_seo_audit_workflow` tool orchestrator
-- [ ] Add configurable workflow profiles:
-  - [ ] technical SEO
-  - [ ] content performance
-  - [ ] indexing recovery
-- [ ] Return executive summary + drilldown sections optimized for both AI + human handoff
-- [ ] Add optional Markdown-ready report payloads
+- [x] Add `run_seo_audit_workflow` tool orchestrator
+- [x] Add configurable workflow profiles:
+  - [x] technical SEO
+  - [x] content performance
+  - [x] indexing recovery
+- [x] Return executive summary + drilldown sections optimized for both AI + human handoff
+- [x] Add optional Markdown-ready report payloads
 
 ## Phase 6: Observability And Operations
 

@@ -8,6 +8,7 @@ import { RecommendNextActionsSchema } from '../src/schemas/recommendations.js';
 import { QuickWinsSchema } from '../src/schemas/analytics.js';
 import { CannibalizationSchema } from '../src/schemas/computed.js';
 import { DropAlertsSchema, IndexingHealthReportSchema } from '../src/schemas/computed2.js';
+import { RunSeoAuditWorkflowSchema } from '../src/schemas/workflow.js';
 
 describe('Sites CRUD schemas', () => {
   it('GetSiteSchema requires siteUrl', () => {
@@ -293,5 +294,20 @@ describe('Phase 4 schema extensions', () => {
     expect(result.seasonalAdjustment).toBe(true);
     expect(result.includeChangePoints).toBe(true);
     expect(result.changePointSensitivity).toBe(3);
+  });
+});
+
+describe('RunSeoAuditWorkflowSchema', () => {
+  it('supports profile defaults and markdown flag', () => {
+    const result = RunSeoAuditWorkflowSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      markdown: true,
+    });
+
+    expect(result.profile).toBe('technical');
+    expect(result.topN).toBe(25);
+    expect(result.rowLimit).toBe(1000);
+    expect(result.markdown).toBe(true);
   });
 });

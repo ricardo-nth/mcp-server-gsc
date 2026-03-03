@@ -30,6 +30,7 @@ import {
   SearchAnalyticsCursorSchema,
 } from './schemas/analytics.js';
 import { RecommendNextActionsSchema } from './schemas/recommendations.js';
+import { RunSeoAuditWorkflowSchema } from './schemas/workflow.js';
 import { IndexInspectSchema } from './schemas/inspection.js';
 import {
   ListSitemapsSchema,
@@ -68,6 +69,7 @@ import {
   handleSearchAnalyticsCursor,
 } from './tools/analytics.js';
 import { handleRecommendNextActions } from './tools/recommendations.js';
+import { handleRunSeoAuditWorkflow } from './tools/workflow.js';
 import { handleIndexInspect } from './tools/inspection.js';
 import {
   handleListSitemaps,
@@ -183,6 +185,12 @@ const TOOL_EXAMPLES: Record<string, Record<string, unknown>> = {
     minImpressions: 100,
     includeCwv: true,
   },
+  run_seo_audit_workflow: {
+    siteUrl: 'sc-domain:example.com',
+    days: 28,
+    profile: 'technical',
+    markdown: true,
+  },
   search_analytics_cursor: {
     siteUrl: 'sc-domain:example.com',
     days: 28,
@@ -263,6 +271,7 @@ const SUGGESTED_NEXT_TOOL: Record<string, string> = {
   search_analytics_cursor: 'enhanced_search_analytics',
   enhanced_search_analytics: 'detect_quick_wins',
   recommend_next_actions: 'page_health_dashboard',
+  run_seo_audit_workflow: 'recommend_next_actions',
   detect_quick_wins: 'ctr_analysis',
   index_inspect: 'indexing_health_report',
   list_sitemaps: 'get_sitemap',
@@ -389,6 +398,12 @@ const TOOLS: ToolDefinition[] = [
     description:
       'Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, and CWV quality.',
     inputSchema: zodToJsonSchema(RecommendNextActionsSchema),
+  },
+  {
+    name: 'run_seo_audit_workflow',
+    description:
+      'Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, drilldowns, and optional markdown report.',
+    inputSchema: zodToJsonSchema(RunSeoAuditWorkflowSchema),
   },
   {
     name: 'index_inspect',
@@ -659,6 +674,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return await handleDetectQuickWins(service, args);
         case 'recommend_next_actions':
           return await handleRecommendNextActions(service, args);
+        case 'run_seo_audit_workflow':
+          return await handleRunSeoAuditWorkflow(service, args);
         case 'index_inspect':
           return await handleIndexInspect(service, args);
         case 'list_sitemaps':

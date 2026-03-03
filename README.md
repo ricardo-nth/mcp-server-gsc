@@ -1,6 +1,6 @@
 # mcp-server-gsc-pro
 
-Enhanced MCP server for Google Search Console. 34 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
+Enhanced MCP server for Google Search Console. 35 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
 
 ## Who this is for
 
@@ -110,9 +110,9 @@ With global exports, your `.mcp.json` simplifies to:
 
 > The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
 
-## Tools (34)
+## Tools (35)
 
-### Core (12 tools)
+### Core (13 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -123,6 +123,7 @@ With global exports, your `.mcp.json` simplifies to:
 | `enhanced_search_analytics` | Same + regex filters, quick-wins detection, auto-pagination up to 100K rows |
 | `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance (positions 4-10) |
 | `recommend_next_actions` | Deterministic ranked SEO actions with score, confidence, impact, and rationale |
+| `run_seo_audit_workflow` | Orchestrated profile-based SEO audit with executive summary, step statuses, and optional Markdown report |
 | `index_inspect` | Check indexing status, crawl info, mobile usability, rich results for a URL |
 | `list_sitemaps` | List submitted sitemaps |
 | `get_sitemap` | Get details of a specific sitemap |
@@ -186,6 +187,8 @@ Direct access to related Google APIs.
 **Cursor retrieval** — `search_analytics_cursor` returns one page plus `pageInfo.nextCursor` so agents can stream large result sets in deterministic chunks instead of one giant payload.
 
 **Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters.
+
+**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, and optional `markdownReport` for copy/paste handoff.
 
 **Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
 
