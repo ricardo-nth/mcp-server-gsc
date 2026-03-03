@@ -9,6 +9,7 @@ import { QuickWinsSchema } from '../src/schemas/analytics.js';
 import { CannibalizationSchema } from '../src/schemas/computed.js';
 import { DropAlertsSchema, IndexingHealthReportSchema } from '../src/schemas/computed2.js';
 import { RunSeoAuditWorkflowSchema } from '../src/schemas/workflow.js';
+import { HealthSnapshotSchema } from '../src/schemas/operations.js';
 
 describe('Sites CRUD schemas', () => {
   it('GetSiteSchema requires siteUrl', () => {
@@ -309,5 +310,12 @@ describe('RunSeoAuditWorkflowSchema', () => {
     expect(result.topN).toBe(25);
     expect(result.rowLimit).toBe(1000);
     expect(result.markdown).toBe(true);
+  });
+});
+
+describe('HealthSnapshotSchema', () => {
+  it('defaults includeToolMetrics to true', () => {
+    const result = HealthSnapshotSchema.parse({});
+    expect(result.includeToolMetrics).toBe(true);
   });
 });

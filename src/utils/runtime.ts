@@ -18,12 +18,25 @@ interface QuotaState {
   perToolUsed: Map<string, number>;
 }
 
-interface QuotaSnapshot {
+export interface QuotaSnapshot {
   toolUnitsReserved: number;
   toolUsed: number;
   toolBudget: number;
   globalUsed: number;
   globalBudget: number;
+}
+
+interface ToolExecutionStats {
+  success: number;
+  failure: number;
+  totalLatencyMs: number;
+  lastLatencyMs: number | null;
+}
+
+interface SemaphoreSnapshot {
+  maxConcurrency: number;
+  active: number;
+  queued: number;
 }
 
 export interface CacheMeta {
@@ -97,9 +110,19 @@ class Semaphore {
       next();
     }
   }
+
+  snapshot(): SemaphoreSnapshot {
+    return {
+      maxConcurrency: this.maxConcurrency,
+      active: this.active,
+      queued: this.queue.length,
+    };
+  }
 }
 
 export class RuntimeCoordinator {
+  private readonly startedAt = Date.now();
+
   private readonly cache = new Map<string, CacheEntry>();
 
   private readonly idempotency = new Map<string, IdempotencyEntry>();
@@ -137,6 +160,8 @@ export class RuntimeCoordinator {
     globalUsed: 0,
     perToolUsed: new Map<string, number>(),
   };
+
+  private readonly toolExecutionStats = new Map<string, ToolExecutionStats>();
 
   private ensureFreshDay(): void {
     const today = getUtcDay();
@@ -307,5 +332,94 @@ export class RuntimeCoordinator {
       ttlMs: this.idempotencyTtlSec * 1000,
       value: this.cloneResult(result),
     });
+  }
+
+  recordToolExecution(toolName: string, status: 'success' | 'failure', latencyMs: number): void {
+    const existing =
+      this.toolExecutionStats.get(toolName) ?? {
+        success: 0,
+        failure: 0,
+        totalLatencyMs: 0,
+        lastLatencyMs: null,
+      };
+
+    if (status === 'success') {
+      existing.success += 1;
+    } else {
+      existing.failure += 1;
+    }
+    existing.totalLatencyMs += Math.max(0, latencyMs);
+    existing.lastLatencyMs = Math.max(0, latencyMs);
+
+    this.toolExecutionStats.set(toolName, existing);
+  }
+
+  getHealthSnapshot(): Record<string, unknown> {
+    this.purgeExpiredEntries();
+    this.ensureFreshDay();
+
+    const perToolQuotaUsed = Array.from(this.quotaState.perToolUsed.entries())
+      .sort(([toolA], [toolB]) => toolA.localeCompare(toolB))
+      .reduce<Record<string, number>>((acc, [toolName, units]) => {
+        acc[toolName] = units;
+        return acc;
+      }, {});
+
+    const perToolQuotaBudget = Array.from(this.perToolQuotaBudget.entries())
+      .sort(([toolA], [toolB]) => toolA.localeCompare(toolB))
+      .reduce<Record<string, number>>((acc, [toolName, units]) => {
+        acc[toolName] = units;
+        return acc;
+      }, {});
+
+    const toolMetrics = Array.from(this.toolExecutionStats.entries())
+      .sort(([toolA], [toolB]) => toolA.localeCompare(toolB))
+      .reduce<Record<string, Record<string, number | null>>>((acc, [toolName, stats]) => {
+        const totalCalls = stats.success + stats.failure;
+        acc[toolName] = {
+          success: stats.success,
+          failure: stats.failure,
+          totalCalls,
+          lastLatencyMs: stats.lastLatencyMs,
+          avgLatencyMs:
+            totalCalls > 0 ? Number((stats.totalLatencyMs / totalCalls).toFixed(2)) : null,
+        };
+        return acc;
+      }, {});
+
+    const toolConcurrency = Array.from(this.toolSemaphores.entries())
+      .sort(([toolA], [toolB]) => toolA.localeCompare(toolB))
+      .reduce<Record<string, SemaphoreSnapshot>>((acc, [toolName, semaphore]) => {
+        acc[toolName] = semaphore.snapshot();
+        return acc;
+      }, {});
+
+    return {
+      timestamp: new Date().toISOString(),
+      uptimeSec: Math.floor((Date.now() - this.startedAt) / 1000),
+      cache: {
+        ttlSecDefault: this.cacheTtlSec,
+        entries: this.cache.size,
+      },
+      idempotency: {
+        ttlSec: this.idempotencyTtlSec,
+        entries: this.idempotency.size,
+      },
+      concurrency: {
+        global: this.globalSemaphore.snapshot(),
+        perTool: toolConcurrency,
+      },
+      quota: {
+        day: this.quotaState.day,
+        global: {
+          used: this.quotaState.globalUsed,
+          budget: this.globalQuotaBudget,
+          remaining: Math.max(0, this.globalQuotaBudget - this.quotaState.globalUsed),
+        },
+        perToolUsed: perToolQuotaUsed,
+        perToolBudget: perToolQuotaBudget,
+      },
+      toolMetrics,
+    };
   }
 }

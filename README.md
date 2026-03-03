@@ -1,6 +1,6 @@
 # mcp-server-gsc-pro
 
-Enhanced MCP server for Google Search Console. 35 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
+Enhanced MCP server for Google Search Console. 36 tools spanning raw API access, computed intelligence, operations diagnostics, and adjacent Google APIs — designed for AI agents that do SEO work.
 
 ## Who this is for
 
@@ -110,7 +110,7 @@ With global exports, your `.mcp.json` simplifies to:
 
 > The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
 
-## Tools (35)
+## Tools (36)
 
 ### Core (13 tools)
 
@@ -129,6 +129,12 @@ With global exports, your `.mcp.json` simplifies to:
 | `get_sitemap` | Get details of a specific sitemap |
 | `submit_sitemap` | Submit a new sitemap |
 | `delete_sitemap` | Remove a sitemap |
+
+### Operations (1 tool)
+
+| Tool | Description |
+|------|-------------|
+| `health_snapshot` | Runtime diagnostics snapshot for cache, concurrency, quota, idempotency, and per-tool success/failure counters |
 
 ### Computed Intelligence (7 tools)
 
@@ -206,6 +212,8 @@ The original payload fields are preserved at top-level for backward compatibilit
 
 **Runtime reliability controls** — Phase 2 adds global/per-tool concurrency limiting, quota-budget guardrails (fail-fast before quota burn), and idempotency support for mutating retries (currently `indexing_publish` via `idempotencyKey`).
 
+**Observability controls** — telemetry emits one structured event per tool call (tool name, latency, retries, quota estimate, cache/idempotency flags). Enable `GSC_DEBUG_MODE=true` for redacted request/response traces, and use `health_snapshot` for runtime diagnostics.
+
 **Error handling** — all errors return structured MCP payloads with `isError: true`, specific error codes (`AUTH_ERROR`, `QUOTA_ERROR`, `PERMISSION_ERROR`), and actionable messages.
 
 ## Environment Variables
@@ -218,17 +226,23 @@ The original payload fields are preserved at top-level for backward compatibilit
 | `GSC_GLOBAL_CONCURRENCY` | No | Max concurrent in-flight tool executions across the server (default: `8`) |
 | `GSC_QUOTA_BUDGET_GLOBAL_DAILY` | No | Daily global guardrail budget for quota-sensitive tools (default: `5000`) |
 | `GSC_IDEMPOTENCY_TTL_SEC` | No | TTL for idempotency replay records (default: `86400`) |
+| `GSC_TELEMETRY_ENABLED` | No | Emit structured telemetry events to stderr for every tool call (default: `true`) |
+| `GSC_DEBUG_MODE` | No | Include redacted request/response traces in response metadata (default: `false`) |
 
 ## Development
 
 ```bash
 pnpm install
 pnpm build      # TypeScript compile to dist/
-pnpm test       # Vitest (119 tests)
+pnpm test       # Vitest (166 tests)
 pnpm lint       # Type check only (tsc --noEmit)
 ```
 
 CI runs on every PR: lint + test + build across Node 18, 20, 22.
+
+Operational runbook: see `docs/operations.md` for telemetry fields, redaction behavior, and health snapshot usage.
+
+Release/process docs: `CHANGELOG.md`, `docs/releasing.md`, and migration notes in `docs/migrations/`.
 
 ## License
 

@@ -52,6 +52,7 @@ import { MobileFriendlyTestSchema } from './schemas/mobilefriendly.js';
 import { PageSpeedInsightsSchema } from './schemas/pagespeed.js';
 import { IndexingPublishSchema, IndexingStatusSchema } from './schemas/indexing.js';
 import { CrUXQuerySchema, CrUXHistorySchema } from './schemas/crux.js';
+import { HealthSnapshotSchema } from './schemas/operations.js';
 import {
   PageHealthDashboardSchema,
   IndexingHealthReportSchema,
@@ -102,7 +103,12 @@ import {
   RuntimeCoordinator,
   type CacheMeta,
   type IdempotencyMeta,
+  type QuotaSnapshot,
 } from './utils/runtime.js';
+import { withRetryTraceContext } from './utils/retry.js';
+import { redactSensitiveData } from './utils/redaction.js';
+import { ConsoleTelemetrySink, TelemetryRecorder } from './utils/telemetry.js';
+import { handleHealthSnapshot } from './tools/operations.js';
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -119,6 +125,15 @@ if (!GOOGLE_APPLICATION_CREDENTIALS) {
 const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY;
 // Optional — only needed for CrUX tools. Server starts fine without it.
 
+function envFlag(name: string, fallback: boolean): boolean {
+  const value = process.env[name];
+  if (!value) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+const TELEMETRY_ENABLED = envFlag('GSC_TELEMETRY_ENABLED', true);
+const DEBUG_MODE = envFlag('GSC_DEBUG_MODE', false);
+
 // ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
@@ -130,6 +145,7 @@ const server = new Server(
 
 const RESPONSE_SCHEMA_VERSION = '1.0.0';
 const runtime = new RuntimeCoordinator();
+const telemetry = new TelemetryRecorder(new ConsoleTelemetrySink(), TELEMETRY_ENABLED);
 
 type ToolDefinition = {
   name: string;
@@ -167,6 +183,11 @@ const TOOL_HINTS: Record<string, { latencyHint: string; costHint: string; quotaH
     latencyHint: 'medium',
     costHint: 'low',
     quotaHint: 'Requires GOOGLE_CLOUD_API_KEY and CrUX API quota in Google Cloud.',
+  },
+  health_snapshot: {
+    latencyHint: 'low',
+    costHint: 'low',
+    quotaHint: 'No external API quota consumed; reports in-memory runtime diagnostics.',
   },
 };
 
@@ -227,6 +248,9 @@ const TOOL_EXAMPLES: Record<string, Record<string, unknown>> = {
     siteUrl: 'sc-domain:example.com',
     url: 'https://example.com/blog/post',
     days: 28,
+  },
+  health_snapshot: {
+    includeToolMetrics: true,
   },
 };
 
@@ -297,6 +321,7 @@ const SUGGESTED_NEXT_TOOL: Record<string, string> = {
   indexing_status: 'index_inspect',
   crux_query: 'crux_history',
   crux_history: 'page_health_dashboard',
+  health_snapshot: 'gsc_healthcheck',
 };
 
 function getSuggestedNextTool(toolName: string, isError: boolean): string | undefined {
@@ -353,6 +378,31 @@ function getIdempotencyKey(args: unknown): string | null {
   return value;
 }
 
+function getResultPayload(result: ToolResult): Record<string, unknown> {
+  if (result.structuredContent && typeof result.structuredContent === 'object') {
+    return result.structuredContent as Record<string, unknown>;
+  }
+  return {};
+}
+
+function getErrorTelemetryFields(result: ToolResult): {
+  errorCode?: string;
+  errorMessage?: string;
+} {
+  if (!result.isError) {
+    return {};
+  }
+
+  const payload = getResultPayload(result);
+  const errorCode = typeof payload.code === 'string' ? payload.code : undefined;
+  const errorMessage = typeof payload.error === 'string' ? payload.error : undefined;
+
+  return {
+    ...(errorCode ? { errorCode } : {}),
+    ...(errorMessage ? { errorMessage } : {}),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
@@ -368,6 +418,12 @@ const TOOLS: ToolDefinition[] = [
     description:
       'Quick preflight check for agent workflows: validates Search Console auth by listing sites and reports optional API key availability.',
     inputSchema: zodToJsonSchema(z.object({})),
+  },
+  {
+    name: 'health_snapshot',
+    description:
+      'Runtime diagnostics snapshot for operations: cache/idempotency state, concurrency queues, quota guardrails, and per-tool success/failure counters.',
+    inputSchema: zodToJsonSchema(HealthSnapshotSchema),
   },
   {
     name: 'search_analytics',
@@ -576,6 +632,8 @@ const MUTATING_TOOLS = new Set([
   'indexing_publish',
 ]);
 
+const NON_CACHEABLE_TOOLS = new Set(['health_snapshot']);
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS.map((tool) => ({
     ...tool,
@@ -599,9 +657,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_API_KEY);
   const mode = getResponseMode(args);
   const requestId = randomUUID();
-  const cacheEligible = !MUTATING_TOOLS.has(name);
+  const startTimeMs = Date.now();
+  const cacheEligible = !MUTATING_TOOLS.has(name) && !NON_CACHEABLE_TOOLS.has(name);
   const cacheKey = cacheEligible ? runtime.buildCacheKey(name, args) : null;
   const idempotencyKey = MUTATING_TOOLS.has(name) ? getIdempotencyKey(args) : null;
+  let retries = 0;
+  let quotaUnitsEstimated = 0;
+  let quotaSnapshot: QuotaSnapshot | undefined;
 
   const cacheMetaBase: CacheMeta = {
     cacheHit: false,
@@ -613,24 +675,81 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     idempotencyReplay: false,
   };
 
+  const finalizeResult = (
+    result: ToolResult,
+    metadata: Record<string, unknown>,
+    state: {
+      cacheHit: boolean;
+      idempotencyReplay: boolean;
+    },
+  ): ToolResult => {
+    const responseMetadata: Record<string, unknown> = {
+      ...metadata,
+      retries,
+      quotaUnitsEstimated,
+      ...(quotaSnapshot ? { quota: quotaSnapshot } : {}),
+    };
+
+    if (DEBUG_MODE) {
+      responseMetadata.debugTrace = {
+        request: {
+          toolName: name,
+          args: redactSensitiveData(args ?? {}),
+        },
+        response: {
+          isError: Boolean(result.isError),
+          payload: redactSensitiveData(getResultPayload(result)),
+        },
+      };
+    }
+
+    const formatted = formatToolResult(name, mode, requestId, result, responseMetadata);
+    const status = formatted.isError ? 'error' : 'success';
+    const latencyMs = Date.now() - startTimeMs;
+
+    runtime.recordToolExecution(name, status === 'success' ? 'success' : 'failure', latencyMs);
+    telemetry.track({
+      timestamp: new Date().toISOString(),
+      requestId,
+      toolName: name,
+      mode,
+      status,
+      latencyMs,
+      retries,
+      quotaUnitsEstimated,
+      quotaUnitsReserved: quotaSnapshot?.toolUnitsReserved ?? 0,
+      cacheHit: state.cacheHit,
+      idempotencyReplay: state.idempotencyReplay,
+      ...getErrorTelemetryFields(result),
+    });
+
+    return formatted;
+  };
+
   try {
-    if (!args && name !== 'list_sites' && name !== 'gsc_healthcheck') {
-      return formatToolResult(name, mode, requestId, errorResult({
+    if (!args && !['list_sites', 'gsc_healthcheck', 'health_snapshot'].includes(name)) {
+      return finalizeResult(errorResult({
         error: 'Arguments are required',
       }), {
         ...cacheMetaBase,
         ...idempotencyMetaBase,
+      }, {
+        cacheHit: false,
+        idempotencyReplay: false,
       });
     }
 
     if (cacheEligible && cacheKey) {
       const cached = runtime.getCached(cacheKey);
       if (cached) {
-        return formatToolResult(name, mode, requestId, cached.result, {
+        return finalizeResult(cached.result, {
           cacheHit: true,
           cacheAgeSec: cached.ageSec,
           cacheKey,
           ...idempotencyMetaBase,
+        }, {
+          cacheHit: true,
+          idempotencyReplay: false,
         });
       }
     }
@@ -638,107 +757,119 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     if (idempotencyKey) {
       const replay = runtime.getIdempotentResult(name, idempotencyKey);
       if (replay) {
-        return formatToolResult(name, mode, requestId, replay, {
+        return finalizeResult(replay, {
           ...cacheMetaBase,
           idempotencyKey,
+          idempotencyReplay: true,
+        }, {
+          cacheHit: false,
           idempotencyReplay: true,
         });
       }
     }
 
-    const quotaUnits = runtime.estimateQuotaUnits(name, args);
-    const quotaSnapshot = runtime.reserveQuota(name, quotaUnits);
+    quotaUnitsEstimated = runtime.estimateQuotaUnits(name, args);
+    quotaSnapshot = runtime.reserveQuota(name, quotaUnitsEstimated);
 
-    const result = await runtime.withConcurrencyLimit(name, async () => {
-      switch (name) {
-        case 'list_sites':
-          return await handleListSites(service);
-        case 'gsc_healthcheck': {
-          const response = await service.listSites();
-          const entries = (response.data?.siteEntry ?? []) as Array<unknown>;
-          return jsonResult({
-            ok: true,
-            auth: 'ok',
-            siteCount: entries.length,
-            cruxApiKeyConfigured: Boolean(GOOGLE_CLOUD_API_KEY),
-            indexingApiConfigured: true,
-          });
+    const traced = await withRetryTraceContext(async () =>
+      runtime.withConcurrencyLimit(name, async () => {
+        switch (name) {
+          case 'list_sites':
+            return await handleListSites(service);
+          case 'gsc_healthcheck': {
+            const response = await service.listSites();
+            const entries = (response.data?.siteEntry ?? []) as Array<unknown>;
+            return jsonResult({
+              ok: true,
+              auth: 'ok',
+              siteCount: entries.length,
+              cruxApiKeyConfigured: Boolean(GOOGLE_CLOUD_API_KEY),
+              indexingApiConfigured: true,
+            });
+          }
+          case 'health_snapshot':
+            return await handleHealthSnapshot(runtime, args, {
+              debugMode: DEBUG_MODE,
+              telemetryEnabled: telemetry.isEnabled(),
+            });
+          case 'search_analytics':
+            return await handleSearchAnalytics(service, args);
+          case 'search_analytics_cursor':
+            return await handleSearchAnalyticsCursor(service, args);
+          case 'enhanced_search_analytics':
+            return await handleEnhancedSearchAnalytics(service, args);
+          case 'detect_quick_wins':
+            return await handleDetectQuickWins(service, args);
+          case 'recommend_next_actions':
+            return await handleRecommendNextActions(service, args);
+          case 'run_seo_audit_workflow':
+            return await handleRunSeoAuditWorkflow(service, args);
+          case 'index_inspect':
+            return await handleIndexInspect(service, args);
+          case 'list_sitemaps':
+            return await handleListSitemaps(service, args);
+          case 'get_sitemap':
+            return await handleGetSitemap(service, args);
+          case 'submit_sitemap':
+            return await handleSubmitSitemap(service, args);
+          case 'delete_sitemap':
+            return await handleDeleteSitemap(service, args);
+          // Computed intelligence tools
+          case 'compare_periods':
+            return await handleComparePeriods(service, args);
+          case 'detect_content_decay':
+            return await handleContentDecay(service, args);
+          case 'detect_cannibalization':
+            return await handleCannibalization(service, args);
+          case 'diff_keywords':
+            return await handleDiffKeywords(service, args);
+          case 'batch_inspect':
+            return await handleBatchInspect(service, args);
+          case 'ctr_analysis':
+            return await handleCtrAnalysis(service, args);
+          case 'search_type_breakdown':
+            return await handleSearchTypeBreakdown(service, args);
+          // Computed intelligence v2
+          case 'page_health_dashboard':
+            return await handlePageHealthDashboard(service, args);
+          case 'indexing_health_report':
+            return await handleIndexingHealthReport(service, args);
+          case 'serp_feature_tracking':
+            return await handleSerpFeatureTracking(service, args);
+          case 'cannibalization_resolver':
+            return await handleCannibalizationResolver(service, args);
+          case 'drop_alerts':
+            return await handleDropAlerts(service, args);
+          // Sites CRUD
+          case 'get_site':
+            return await handleGetSite(service, args);
+          case 'add_site':
+            return await handleAddSite(service, args);
+          case 'delete_site':
+            return await handleDeleteSite(service, args);
+          // Mobile-Friendly Test
+          case 'mobile_friendly_test':
+            return await handleMobileFriendlyTest(service, args);
+          // PageSpeed Insights
+          case 'pagespeed_insights':
+            return await handlePageSpeedInsights(service, args);
+          // Indexing API
+          case 'indexing_publish':
+            return await handleIndexingPublish(service, args);
+          case 'indexing_status':
+            return await handleIndexingStatus(service, args);
+          // CrUX
+          case 'crux_query':
+            return await handleCrUXQuery(service, args);
+          case 'crux_history':
+            return await handleCrUXHistory(service, args);
+          default:
+            throw new Error(`Unknown tool: ${name}`);
         }
-        case 'search_analytics':
-          return await handleSearchAnalytics(service, args);
-        case 'search_analytics_cursor':
-          return await handleSearchAnalyticsCursor(service, args);
-        case 'enhanced_search_analytics':
-          return await handleEnhancedSearchAnalytics(service, args);
-        case 'detect_quick_wins':
-          return await handleDetectQuickWins(service, args);
-        case 'recommend_next_actions':
-          return await handleRecommendNextActions(service, args);
-        case 'run_seo_audit_workflow':
-          return await handleRunSeoAuditWorkflow(service, args);
-        case 'index_inspect':
-          return await handleIndexInspect(service, args);
-        case 'list_sitemaps':
-          return await handleListSitemaps(service, args);
-        case 'get_sitemap':
-          return await handleGetSitemap(service, args);
-        case 'submit_sitemap':
-          return await handleSubmitSitemap(service, args);
-        case 'delete_sitemap':
-          return await handleDeleteSitemap(service, args);
-        // Computed intelligence tools
-        case 'compare_periods':
-          return await handleComparePeriods(service, args);
-        case 'detect_content_decay':
-          return await handleContentDecay(service, args);
-        case 'detect_cannibalization':
-          return await handleCannibalization(service, args);
-        case 'diff_keywords':
-          return await handleDiffKeywords(service, args);
-        case 'batch_inspect':
-          return await handleBatchInspect(service, args);
-        case 'ctr_analysis':
-          return await handleCtrAnalysis(service, args);
-        case 'search_type_breakdown':
-          return await handleSearchTypeBreakdown(service, args);
-        // Computed intelligence v2
-        case 'page_health_dashboard':
-          return await handlePageHealthDashboard(service, args);
-        case 'indexing_health_report':
-          return await handleIndexingHealthReport(service, args);
-        case 'serp_feature_tracking':
-          return await handleSerpFeatureTracking(service, args);
-        case 'cannibalization_resolver':
-          return await handleCannibalizationResolver(service, args);
-        case 'drop_alerts':
-          return await handleDropAlerts(service, args);
-        // Sites CRUD
-        case 'get_site':
-          return await handleGetSite(service, args);
-        case 'add_site':
-          return await handleAddSite(service, args);
-        case 'delete_site':
-          return await handleDeleteSite(service, args);
-        // Mobile-Friendly Test
-        case 'mobile_friendly_test':
-          return await handleMobileFriendlyTest(service, args);
-        // PageSpeed Insights
-        case 'pagespeed_insights':
-          return await handlePageSpeedInsights(service, args);
-        // Indexing API
-        case 'indexing_publish':
-          return await handleIndexingPublish(service, args);
-        case 'indexing_status':
-          return await handleIndexingStatus(service, args);
-        // CrUX
-        case 'crux_query':
-          return await handleCrUXQuery(service, args);
-        case 'crux_history':
-          return await handleCrUXHistory(service, args);
-        default:
-          throw new Error(`Unknown tool: ${name}`);
-      }
-    });
+      }),
+    );
+    retries = traced.retries;
+    const result = traced.result;
 
     if (cacheEligible && cacheKey && !result.isError) {
       runtime.setCached(cacheKey, name, result);
@@ -748,14 +879,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       runtime.saveIdempotentResult(name, idempotencyKey, result);
     }
 
-    return formatToolResult(name, mode, requestId, result, {
+    return finalizeResult(result, {
       ...cacheMetaBase,
       ...idempotencyMetaBase,
-      quota: quotaSnapshot,
+    }, {
+      cacheHit: false,
+      idempotencyReplay: false,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return formatToolResult(name, mode, requestId, errorResult({
+      return finalizeResult(errorResult({
         error: 'Invalid arguments',
         details: error.errors.map((e) => ({
           path: e.path.join('.'),
@@ -764,21 +897,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }), {
         ...cacheMetaBase,
         ...idempotencyMetaBase,
+      }, {
+        cacheHit: false,
+        idempotencyReplay: false,
       });
     }
     if (error instanceof GSCError) {
-      return formatToolResult(name, mode, requestId, errorResult({
+      return finalizeResult(errorResult({
         error: error.message,
         code: error.code,
         statusCode: error.statusCode,
       }), {
         ...cacheMetaBase,
         ...idempotencyMetaBase,
+      }, {
+        cacheHit: false,
+        idempotencyReplay: false,
       });
     }
     if (error instanceof Error) {
       const isQuotaBudgetError = error.message.toLowerCase().includes('guardrail');
-      return formatToolResult(name, mode, requestId, errorResult({
+      return finalizeResult(errorResult({
         error: error.message,
         ...(isQuotaBudgetError
           ? {
@@ -789,14 +928,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }), {
         ...cacheMetaBase,
         ...idempotencyMetaBase,
+      }, {
+        cacheHit: false,
+        idempotencyReplay: false,
       });
     }
-    return formatToolResult(name, mode, requestId, errorResult({
+    return finalizeResult(errorResult({
       error: 'Unknown error',
       details: String(error),
     }), {
       ...cacheMetaBase,
       ...idempotencyMetaBase,
+    }, {
+      cacheHit: false,
+      idempotencyReplay: false,
     });
   }
 });

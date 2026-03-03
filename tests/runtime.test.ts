@@ -47,4 +47,28 @@ describe('RuntimeCoordinator', () => {
 
     expect(a).toBe(b);
   });
+
+  it('reports health snapshot counters for cache, quota, and tool execution', () => {
+    const runtime = new RuntimeCoordinator();
+    const cacheKey = runtime.buildCacheKey('search_analytics', {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+    });
+
+    runtime.setCached(cacheKey, 'search_analytics', jsonResult({ rows: [] }));
+    runtime.reserveQuota('index_inspect', 1);
+    runtime.recordToolExecution('search_analytics', 'success', 42);
+    runtime.recordToolExecution('search_analytics', 'failure', 21);
+
+    const snapshot = runtime.getHealthSnapshot();
+    const cache = snapshot.cache as Record<string, unknown>;
+    const quota = snapshot.quota as Record<string, unknown>;
+    const globalQuota = quota.global as Record<string, unknown>;
+    const toolMetrics = snapshot.toolMetrics as Record<string, Record<string, unknown>>;
+
+    expect(cache.entries).toBe(1);
+    expect(globalQuota.used).toBe(1);
+    expect(toolMetrics.search_analytics.totalCalls).toBe(2);
+    expect(toolMetrics.search_analytics.avgLatencyMs).toBe(31.5);
+  });
 });

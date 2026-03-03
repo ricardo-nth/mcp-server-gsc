@@ -13,10 +13,10 @@ Purpose: turn `mcp-server-gsc-pro` into the best-in-class SEO MCP for autonomous
 
 Goal: keep shipping confidence high as roadmap complexity increases.
 
-- [ ] Add CI gate for `lint + test + build` on every push/PR (if not already enforced in repo settings)
-- [ ] Add changelog discipline (`CHANGELOG.md` or release notes section)
-- [ ] Add versioned migration notes for output schema changes
-- [ ] Add a “breaking change” checklist for tool input/output evolution
+- [x] Add CI gate for `lint + test + build` on every push/PR (if not already enforced in repo settings)
+- [x] Add changelog discipline (`CHANGELOG.md` or release notes section)
+- [x] Add versioned migration notes for output schema changes
+- [x] Add a “breaking change” checklist for tool input/output evolution
 
 ## Phase 1: Agent Ergonomics Foundation
 
@@ -87,18 +87,18 @@ Goal: make multi-step audits one call away for agents.
 
 Goal: improve debuggability and production operations.
 
-- [ ] Add structured telemetry events (tool name, latency, retries, quota estimates)
-- [ ] Add per-tool success/failure counters
-- [ ] Add debug mode with redacted request/response traces
-- [ ] Add “health snapshot” tool for runtime diagnostics
+- [x] Add structured telemetry events (tool name, latency, retries, quota estimates)
+- [x] Add per-tool success/failure counters
+- [x] Add debug mode with redacted request/response traces
+- [x] Add “health snapshot” tool for runtime diagnostics
 
 ## Cross-Cutting Testing Plan
 
-- [ ] Golden tests for tool response shape stability
-- [ ] Property-based tests for scoring/recommendation logic
-- [ ] Contract tests for each external API integration
-- [ ] Load tests for pagination/stream/concurrency behavior
-- [ ] Regression fixtures for known SEO edge cases
+- [x] Golden tests for tool response shape stability
+- [x] Property-based tests for scoring/recommendation logic
+- [x] Contract tests for each external API integration
+- [x] Load tests for pagination/stream/concurrency behavior
+- [x] Regression fixtures for known SEO edge cases
 
 ## Suggested Release Sequence
 
@@ -112,10 +112,10 @@ Goal: improve debuggability and production operations.
 
 If you want a focused start, ship this first:
 
-- [ ] `schemaVersion` + response `mode`
-- [ ] cache layer + metadata fields
-- [ ] `recommend_next_actions` (MVP)
-- [ ] tests + README examples for the above
+- [x] `schemaVersion` + response `mode`
+- [x] cache layer + metadata fields
+- [x] `recommend_next_actions` (MVP)
+- [x] tests + README examples for the above
 
 ## Detailed Phase Specs
 
@@ -339,5 +339,5 @@ Dependencies:
 
 - [ ] Open one tracking issue per phase linking checklist items
 - [ ] Use one feature branch per phase, but ship in small PR slices
-- [ ] Require contract tests for any response-shape change
-- [ ] Document every new tool in README table + usage example
+- [x] Require contract tests for any response-shape change
+- [x] Document every new tool in README table + usage example
