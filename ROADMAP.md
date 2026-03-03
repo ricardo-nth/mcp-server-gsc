@@ -49,15 +49,15 @@ Goal: improve resilience under multi-agent and high-volume usage.
 
 Goal: convert raw analytics into actionable decisions.
 
-- [ ] Add `recommend_next_actions` tool with deterministic ranked actions
-- [ ] Add opportunity scoring model combining:
-  - [ ] click upside
-  - [ ] impression volume
-  - [ ] rank distance
-  - [ ] indexing health
-  - [ ] CWV quality
-- [ ] Add confidence scoring and rationale for each recommendation
-- [ ] Add expected impact buckets (low/medium/high) with simple formulas
+- [x] Add `recommend_next_actions` tool with deterministic ranked actions
+- [x] Add opportunity scoring model combining:
+  - [x] click upside
+  - [x] impression volume
+  - [x] rank distance
+  - [x] indexing health
+  - [x] CWV quality
+- [x] Add confidence scoring and rationale for each recommendation
+- [x] Add expected impact buckets (low/medium/high) with simple formulas
 
 ## Phase 4: SEO-Specific Advanced Analysis
 

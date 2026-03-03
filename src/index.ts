@@ -29,6 +29,7 @@ import {
   QuickWinsSchema,
   SearchAnalyticsCursorSchema,
 } from './schemas/analytics.js';
+import { RecommendNextActionsSchema } from './schemas/recommendations.js';
 import { IndexInspectSchema } from './schemas/inspection.js';
 import {
   ListSitemapsSchema,
@@ -66,6 +67,7 @@ import {
   handleDetectQuickWins,
   handleSearchAnalyticsCursor,
 } from './tools/analytics.js';
+import { handleRecommendNextActions } from './tools/recommendations.js';
 import { handleIndexInspect } from './tools/inspection.js';
 import {
   handleListSitemaps,
@@ -174,6 +176,13 @@ const TOOL_EXAMPLES: Record<string, Record<string, unknown>> = {
     rowLimit: 1000,
     mode: 'compact',
   },
+  recommend_next_actions: {
+    siteUrl: 'sc-domain:example.com',
+    days: 28,
+    topActions: 5,
+    minImpressions: 100,
+    includeCwv: true,
+  },
   search_analytics_cursor: {
     siteUrl: 'sc-domain:example.com',
     days: 28,
@@ -253,6 +262,7 @@ const SUGGESTED_NEXT_TOOL: Record<string, string> = {
   search_analytics: 'detect_quick_wins',
   search_analytics_cursor: 'enhanced_search_analytics',
   enhanced_search_analytics: 'detect_quick_wins',
+  recommend_next_actions: 'page_health_dashboard',
   detect_quick_wins: 'ctr_analysis',
   index_inspect: 'indexing_health_report',
   list_sitemaps: 'get_sitemap',
@@ -373,6 +383,12 @@ const TOOLS: ToolDefinition[] = [
     description:
       'Find SEO quick-win opportunities: high-impression, low-CTR queries in striking distance (positions 4-10), with optional auto-pagination up to 100K rows',
     inputSchema: zodToJsonSchema(QuickWinsSchema),
+  },
+  {
+    name: 'recommend_next_actions',
+    description:
+      'Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, and CWV quality.',
+    inputSchema: zodToJsonSchema(RecommendNextActionsSchema),
   },
   {
     name: 'index_inspect',
@@ -641,6 +657,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return await handleEnhancedSearchAnalytics(service, args);
         case 'detect_quick_wins':
           return await handleDetectQuickWins(service, args);
+        case 'recommend_next_actions':
+          return await handleRecommendNextActions(service, args);
         case 'index_inspect':
           return await handleIndexInspect(service, args);
         case 'list_sitemaps':

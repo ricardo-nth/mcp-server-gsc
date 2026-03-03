@@ -4,6 +4,7 @@ import { MobileFriendlyTestSchema } from '../src/schemas/mobilefriendly.js';
 import { PageSpeedInsightsSchema } from '../src/schemas/pagespeed.js';
 import { IndexingPublishSchema, IndexingStatusSchema } from '../src/schemas/indexing.js';
 import { CrUXQuerySchema, CrUXHistorySchema } from '../src/schemas/crux.js';
+import { RecommendNextActionsSchema } from '../src/schemas/recommendations.js';
 
 describe('Sites CRUD schemas', () => {
   it('GetSiteSchema requires siteUrl', () => {
@@ -224,5 +225,19 @@ describe('CrUX schemas', () => {
   it('CrUXQuerySchema and CrUXHistorySchema are independent objects', () => {
     // They should parse identically but not be the same reference
     expect(CrUXQuerySchema).not.toBe(CrUXHistorySchema);
+  });
+});
+
+describe('RecommendNextActionsSchema', () => {
+  it('provides sane defaults for recommendation modeling', () => {
+    const result = RecommendNextActionsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+    });
+
+    expect(result.rowLimit).toBe(1000);
+    expect(result.topActions).toBe(5);
+    expect(result.minImpressions).toBe(80);
+    expect(result.includeCwv).toBe(true);
   });
 });

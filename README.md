@@ -1,6 +1,6 @@
 # mcp-server-gsc-pro
 
-Enhanced MCP server for Google Search Console. 33 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
+Enhanced MCP server for Google Search Console. 34 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
 
 ## Who this is for
 
@@ -110,9 +110,9 @@ With global exports, your `.mcp.json` simplifies to:
 
 > The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
 
-## Tools (33)
+## Tools (34)
 
-### Core (11 tools)
+### Core (12 tools)
 
 | Tool | Description |
 |------|-------------|
@@ -122,6 +122,7 @@ With global exports, your `.mcp.json` simplifies to:
 | `search_analytics_cursor` | Cursor-style analytics pagination for high-volume retrieval up to 100K rows |
 | `enhanced_search_analytics` | Same + regex filters, quick-wins detection, auto-pagination up to 100K rows |
 | `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance (positions 4-10) |
+| `recommend_next_actions` | Deterministic ranked SEO actions with score, confidence, impact, and rationale |
 | `index_inspect` | Check indexing status, crawl info, mobile usability, rich results for a URL |
 | `list_sitemaps` | List submitted sitemaps |
 | `get_sitemap` | Get details of a specific sitemap |
