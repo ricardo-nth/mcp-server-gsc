@@ -181,6 +181,20 @@ Direct access to related Google APIs.
 
 **Auto-pagination** — `enhanced_search_analytics` and `detect_quick_wins` accept `maxRows` (up to 100,000) to fetch beyond the 25K per-request API limit.
 
+**Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
+
+**Standard response envelope** — every response (success and error) includes:
+- `schemaVersion`
+- `requestId`
+- `mode`
+- `summary.whatChanged`
+- `summary.whyItMatters`
+- `summary.suggestedNextTool` (when a deterministic next step is known)
+
+The original payload fields are preserved at top-level for backward compatibility (for example, `rows`, `comparisons`, `features`, `error`, etc.).
+
+**Tool planning hints** — `ListTools` now includes richer annotations (read-only flag plus cost/latency/quota hints), and selected high-usage tools include inline input examples in their descriptions.
+
 **Error handling** — all errors return structured MCP payloads with `isError: true`, specific error codes (`AUTH_ERROR`, `QUOTA_ERROR`, `PERMISSION_ERROR`), and actionable messages.
 
 ## Environment Variables

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { randomUUID } from 'node:crypto';
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
@@ -11,7 +13,14 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import { GSCError, SearchConsoleService } from './service.js';
-import { errorResult, jsonResult } from './utils/types.js';
+import {
+  errorResult,
+  jsonResult,
+  toEnvelopedResult,
+  type ResponseMode,
+  type ResponseSummary,
+  type ToolResult,
+} from './utils/types.js';
 
 // Schemas
 import {
@@ -108,11 +117,187 @@ const server = new Server(
   { capabilities: { tools: {} } },
 );
 
+const RESPONSE_SCHEMA_VERSION = '1.0.0';
+
+type ToolDefinition = {
+  name: string;
+  description: string;
+  inputSchema: ReturnType<typeof zodToJsonSchema>;
+};
+
+const TOOL_HINTS: Record<string, { latencyHint: string; costHint: string; quotaHint: string }> = {
+  batch_inspect: {
+    latencyHint: 'high',
+    costHint: 'medium',
+    quotaHint: 'Consumes 1 URL Inspection quota per URL (max 100/request).',
+  },
+  indexing_health_report: {
+    latencyHint: 'high',
+    costHint: 'medium',
+    quotaHint: 'Uses URL Inspection API quota (2,000/day per property).',
+  },
+  indexing_publish: {
+    latencyHint: 'low',
+    costHint: 'high',
+    quotaHint: 'Indexing API default quota is roughly 200 publish calls/day.',
+  },
+  crux_query: {
+    latencyHint: 'low',
+    costHint: 'low',
+    quotaHint: 'Requires GOOGLE_CLOUD_API_KEY and CrUX API quota in Google Cloud.',
+  },
+  crux_history: {
+    latencyHint: 'medium',
+    costHint: 'low',
+    quotaHint: 'Requires GOOGLE_CLOUD_API_KEY and CrUX API quota in Google Cloud.',
+  },
+};
+
+const TOOL_EXAMPLES: Record<string, Record<string, unknown>> = {
+  search_analytics: {
+    siteUrl: 'sc-domain:example.com',
+    days: 28,
+    dimensions: ['query', 'page'],
+    rowLimit: 1000,
+    mode: 'compact',
+  },
+  enhanced_search_analytics: {
+    siteUrl: 'sc-domain:example.com',
+    days: 28,
+    regexFilter: 'brand|pricing',
+    maxRows: 50000,
+    mode: 'compact',
+  },
+  index_inspect: {
+    siteUrl: 'sc-domain:example.com',
+    url: 'https://example.com/pricing',
+    mode: 'full',
+  },
+  compare_periods: {
+    siteUrl: 'sc-domain:example.com',
+    days: 14,
+    dimensions: ['query'],
+    rowLimit: 500,
+  },
+  indexing_health_report: {
+    siteUrl: 'sc-domain:example.com',
+    source: 'manual',
+    urls: ['https://example.com/', 'https://example.com/pricing'],
+    mode: 'compact',
+  },
+  page_health_dashboard: {
+    siteUrl: 'sc-domain:example.com',
+    url: 'https://example.com/blog/post',
+    days: 28,
+  },
+};
+
+const DEFAULT_HINTS = {
+  latencyHint: 'medium',
+  costHint: 'low',
+  quotaHint: 'Standard API quota applies for this endpoint.',
+};
+
+const RESPONSE_MODE_SCHEMA: Record<string, unknown> = {
+  type: 'string',
+  enum: ['compact', 'full'],
+  default: 'full',
+  description:
+    'Response verbosity mode. Use "compact" to reduce large arrays for lower token usage, or "full" for complete payloads.',
+};
+
+function withResponseModeInputSchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const properties = (schema.properties as Record<string, unknown> | undefined) ?? {};
+  return {
+    ...schema,
+    properties: {
+      ...properties,
+      mode: RESPONSE_MODE_SCHEMA,
+    },
+  };
+}
+
+function getResponseMode(args: unknown): ResponseMode {
+  if (args && typeof args === 'object' && (args as Record<string, unknown>).mode === 'compact') {
+    return 'compact';
+  }
+  return 'full';
+}
+
+const VALID_TOOL_NAMES = new Set<string>();
+
+const SUGGESTED_NEXT_TOOL: Record<string, string> = {
+  list_sites: 'search_analytics',
+  gsc_healthcheck: 'list_sites',
+  search_analytics: 'detect_quick_wins',
+  enhanced_search_analytics: 'detect_quick_wins',
+  detect_quick_wins: 'ctr_analysis',
+  index_inspect: 'indexing_health_report',
+  list_sitemaps: 'get_sitemap',
+  get_sitemap: 'indexing_health_report',
+  compare_periods: 'detect_content_decay',
+  detect_content_decay: 'drop_alerts',
+  detect_cannibalization: 'cannibalization_resolver',
+  diff_keywords: 'search_analytics',
+  batch_inspect: 'indexing_health_report',
+  ctr_analysis: 'detect_quick_wins',
+  search_type_breakdown: 'search_analytics',
+  page_health_dashboard: 'pagespeed_insights',
+  indexing_health_report: 'index_inspect',
+  serp_feature_tracking: 'search_analytics',
+  cannibalization_resolver: 'detect_cannibalization',
+  drop_alerts: 'compare_periods',
+  get_site: 'search_analytics',
+  add_site: 'gsc_healthcheck',
+  delete_site: 'list_sites',
+  mobile_friendly_test: 'pagespeed_insights',
+  pagespeed_insights: 'crux_query',
+  indexing_publish: 'indexing_status',
+  indexing_status: 'index_inspect',
+  crux_query: 'crux_history',
+  crux_history: 'page_health_dashboard',
+};
+
+function getSuggestedNextTool(toolName: string, isError: boolean): string | undefined {
+  const candidate = isError ? 'gsc_healthcheck' : SUGGESTED_NEXT_TOOL[toolName];
+  if (candidate && VALID_TOOL_NAMES.has(candidate)) {
+    return candidate;
+  }
+  return undefined;
+}
+
+function getResponseSummary(toolName: string, isError: boolean, suggestedNextTool?: string): ResponseSummary {
+  if (isError) {
+    return {
+      whatChanged: `${toolName} failed and returned a structured error payload.`,
+      whyItMatters: 'Agents can branch deterministically on error codes/messages instead of parsing unstructured text.',
+      suggestedNextTool,
+    };
+  }
+
+  return {
+    whatChanged: `${toolName} completed successfully.`,
+    whyItMatters: 'The result can be chained into follow-up SEO diagnostics or optimization actions.',
+    suggestedNextTool,
+  };
+}
+
+function formatToolResult(toolName: string, mode: ResponseMode, requestId: string, result: ToolResult): ToolResult {
+  const suggestedNextTool = getSuggestedNextTool(toolName, Boolean(result.isError));
+  return toEnvelopedResult(result, {
+    schemaVersion: RESPONSE_SCHEMA_VERSION,
+    requestId,
+    mode,
+    toolName,
+    summary: getResponseSummary(toolName, Boolean(result.isError), suggestedNextTool),
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
 
-const TOOLS = [
+const TOOLS: ToolDefinition[] = [
   {
     name: 'list_sites',
     description: 'List all sites available in Google Search Console',
@@ -299,7 +484,11 @@ const TOOLS = [
       'Query Chrome UX Report 40-week rolling history for Core Web Vitals trends by URL or origin. Requires GOOGLE_CLOUD_API_KEY env var.',
     inputSchema: zodToJsonSchema(CrUXHistorySchema),
   },
-] as const;
+];
+
+for (const tool of TOOLS) {
+  VALID_TOOL_NAMES.add(tool.name);
+}
 
 const MUTATING_TOOLS = new Set([
   'submit_sitemap',
@@ -312,8 +501,13 @@ const MUTATING_TOOLS = new Set([
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS.map((tool) => ({
     ...tool,
+    description: TOOL_EXAMPLES[tool.name]
+      ? `${tool.description} Example input: ${JSON.stringify(TOOL_EXAMPLES[tool.name])}`
+      : tool.description,
+    inputSchema: withResponseModeInputSchema(tool.inputSchema as Record<string, unknown>),
     annotations: {
       readOnlyHint: !MUTATING_TOOLS.has(tool.name),
+      ...(TOOL_HINTS[tool.name] ?? DEFAULT_HINTS),
     },
   })),
 }));
@@ -325,122 +519,159 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
   const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_API_KEY);
+  const mode = getResponseMode(args);
+  const requestId = randomUUID();
 
   try {
     if (!args && name !== 'list_sites' && name !== 'gsc_healthcheck') {
-      return errorResult({
+      return formatToolResult(name, mode, requestId, errorResult({
         error: 'Arguments are required',
-      });
+      }));
     }
+
+    let result: ToolResult;
 
     switch (name) {
       case 'list_sites':
-        return await handleListSites(service);
+        result = await handleListSites(service);
+        break;
       case 'gsc_healthcheck': {
         const response = await service.listSites();
         const entries = (response.data?.siteEntry ?? []) as Array<unknown>;
-        return jsonResult({
+        result = jsonResult({
           ok: true,
           auth: 'ok',
           siteCount: entries.length,
           cruxApiKeyConfigured: Boolean(GOOGLE_CLOUD_API_KEY),
           indexingApiConfigured: true,
         });
+        break;
       }
       case 'search_analytics':
-        return await handleSearchAnalytics(service, args);
+        result = await handleSearchAnalytics(service, args);
+        break;
       case 'enhanced_search_analytics':
-        return await handleEnhancedSearchAnalytics(service, args);
+        result = await handleEnhancedSearchAnalytics(service, args);
+        break;
       case 'detect_quick_wins':
-        return await handleDetectQuickWins(service, args);
+        result = await handleDetectQuickWins(service, args);
+        break;
       case 'index_inspect':
-        return await handleIndexInspect(service, args);
+        result = await handleIndexInspect(service, args);
+        break;
       case 'list_sitemaps':
-        return await handleListSitemaps(service, args);
+        result = await handleListSitemaps(service, args);
+        break;
       case 'get_sitemap':
-        return await handleGetSitemap(service, args);
+        result = await handleGetSitemap(service, args);
+        break;
       case 'submit_sitemap':
-        return await handleSubmitSitemap(service, args);
+        result = await handleSubmitSitemap(service, args);
+        break;
       case 'delete_sitemap':
-        return await handleDeleteSitemap(service, args);
+        result = await handleDeleteSitemap(service, args);
+        break;
       // Computed intelligence tools
       case 'compare_periods':
-        return await handleComparePeriods(service, args);
+        result = await handleComparePeriods(service, args);
+        break;
       case 'detect_content_decay':
-        return await handleContentDecay(service, args);
+        result = await handleContentDecay(service, args);
+        break;
       case 'detect_cannibalization':
-        return await handleCannibalization(service, args);
+        result = await handleCannibalization(service, args);
+        break;
       case 'diff_keywords':
-        return await handleDiffKeywords(service, args);
+        result = await handleDiffKeywords(service, args);
+        break;
       case 'batch_inspect':
-        return await handleBatchInspect(service, args);
+        result = await handleBatchInspect(service, args);
+        break;
       case 'ctr_analysis':
-        return await handleCtrAnalysis(service, args);
+        result = await handleCtrAnalysis(service, args);
+        break;
       case 'search_type_breakdown':
-        return await handleSearchTypeBreakdown(service, args);
+        result = await handleSearchTypeBreakdown(service, args);
+        break;
       // Computed intelligence v2
       case 'page_health_dashboard':
-        return await handlePageHealthDashboard(service, args);
+        result = await handlePageHealthDashboard(service, args);
+        break;
       case 'indexing_health_report':
-        return await handleIndexingHealthReport(service, args);
+        result = await handleIndexingHealthReport(service, args);
+        break;
       case 'serp_feature_tracking':
-        return await handleSerpFeatureTracking(service, args);
+        result = await handleSerpFeatureTracking(service, args);
+        break;
       case 'cannibalization_resolver':
-        return await handleCannibalizationResolver(service, args);
+        result = await handleCannibalizationResolver(service, args);
+        break;
       case 'drop_alerts':
-        return await handleDropAlerts(service, args);
+        result = await handleDropAlerts(service, args);
+        break;
       // Sites CRUD
       case 'get_site':
-        return await handleGetSite(service, args);
+        result = await handleGetSite(service, args);
+        break;
       case 'add_site':
-        return await handleAddSite(service, args);
+        result = await handleAddSite(service, args);
+        break;
       case 'delete_site':
-        return await handleDeleteSite(service, args);
+        result = await handleDeleteSite(service, args);
+        break;
       // Mobile-Friendly Test
       case 'mobile_friendly_test':
-        return await handleMobileFriendlyTest(service, args);
+        result = await handleMobileFriendlyTest(service, args);
+        break;
       // PageSpeed Insights
       case 'pagespeed_insights':
-        return await handlePageSpeedInsights(service, args);
+        result = await handlePageSpeedInsights(service, args);
+        break;
       // Indexing API
       case 'indexing_publish':
-        return await handleIndexingPublish(service, args);
+        result = await handleIndexingPublish(service, args);
+        break;
       case 'indexing_status':
-        return await handleIndexingStatus(service, args);
+        result = await handleIndexingStatus(service, args);
+        break;
       // CrUX
       case 'crux_query':
-        return await handleCrUXQuery(service, args);
+        result = await handleCrUXQuery(service, args);
+        break;
       case 'crux_history':
-        return await handleCrUXHistory(service, args);
+        result = await handleCrUXHistory(service, args);
+        break;
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
+
+    return formatToolResult(name, mode, requestId, result);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return errorResult({
+      return formatToolResult(name, mode, requestId, errorResult({
         error: 'Invalid arguments',
         details: error.errors.map((e) => ({
           path: e.path.join('.'),
           message: e.message,
         })),
-      });
+      }));
     }
     if (error instanceof GSCError) {
-      return errorResult({
+      return formatToolResult(name, mode, requestId, errorResult({
         error: error.message,
         code: error.code,
         statusCode: error.statusCode,
-      });
+      }));
     }
     if (error instanceof Error) {
-      return errorResult({
+      return formatToolResult(name, mode, requestId, errorResult({
         error: error.message,
-      });
+      }));
     }
-    return errorResult({
+    return formatToolResult(name, mode, requestId, errorResult({
       error: 'Unknown error',
       details: String(error),
-    });
+    }));
   }
 });
 
