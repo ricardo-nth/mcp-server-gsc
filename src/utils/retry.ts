@@ -1,3 +1,22 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+interface RetryTraceState {
+  retries: number;
+}
+
+const retryTraceStorage = new AsyncLocalStorage<RetryTraceState>();
+
+export async function withRetryTraceContext<T>(
+  operation: () => Promise<T>,
+): Promise<{ result: T; retries: number }> {
+  const state: RetryTraceState = { retries: 0 };
+  const result = await retryTraceStorage.run(state, operation);
+  return {
+    result,
+    retries: state.retries,
+  };
+}
+
 /**
  * Retry a function with exponential backoff and jitter.
  * Retries on 429 (quota) and 5xx errors. Throws immediately on 4xx.
@@ -20,6 +39,11 @@ export async function withRetry<T>(
         isRetryableNetworkError(err);
 
       if (!isRetryable || attempt === maxRetries) throw err;
+
+      const state = retryTraceStorage.getStore();
+      if (state) {
+        state.retries += 1;
+      }
 
       const delay = baseDelay * Math.pow(2, attempt) * (0.5 + Math.random());
       await sleep(delay);

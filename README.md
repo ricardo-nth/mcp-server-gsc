@@ -1,6 +1,6 @@
 # mcp-server-gsc-pro
 
-Enhanced MCP server for Google Search Console. 32 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
+Enhanced MCP server for Google Search Console. 36 tools spanning raw API access, computed intelligence, operations diagnostics, and adjacent Google APIs — designed for AI agents that do SEO work.
 
 ## Who this is for
 
@@ -12,7 +12,7 @@ Wraps the full Google Search Console API surface into MCP tools, then adds a lay
 
 **Raw API access** — search analytics with filtering, URL inspection, sitemaps CRUD, sites CRUD.
 
-**Computed intelligence** — period comparison with delta tracking, content decay detection, keyword cannibalization analysis, CTR benchmarking, keyword diff, batch inspection, SERP feature tracking, automated drop alerts, and page-level health dashboards that pull from 4 APIs in a single call.
+**Computed intelligence** — period comparison with delta tracking, content decay detection, keyword cannibalization analysis, CTR benchmarking, keyword diff, batch inspection, SERP feature tracking, automated drop alerts with seasonal suppression and change-point flags, and page-level health dashboards that pull from 4 APIs in a single call.
 
 **Reliability** — auto-retry with exponential backoff, structured error types with fix instructions, input validation on all fields, auto-pagination for large result sets, and partial-failure tolerance on multi-API tools.
 
@@ -110,22 +110,31 @@ With global exports, your `.mcp.json` simplifies to:
 
 > The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
 
-## Tools (32)
+## Tools (36)
 
-### Core (10 tools)
+### Core (13 tools)
 
 | Tool | Description |
 |------|-------------|
 | `list_sites` | List all GSC properties accessible to the service account |
 | `gsc_healthcheck` | Lightweight preflight check for auth + optional API key availability |
 | `search_analytics` | Query clicks/impressions/CTR/position with filtering by page, query, country, device, search type |
+| `search_analytics_cursor` | Cursor-style analytics pagination for high-volume retrieval up to 100K rows |
 | `enhanced_search_analytics` | Same + regex filters, quick-wins detection, auto-pagination up to 100K rows |
 | `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance (positions 4-10) |
+| `recommend_next_actions` | Deterministic ranked SEO actions with score, confidence, impact, and rationale |
+| `run_seo_audit_workflow` | Orchestrated profile-based SEO audit with executive summary, step statuses, and optional Markdown report |
 | `index_inspect` | Check indexing status, crawl info, mobile usability, rich results for a URL |
 | `list_sitemaps` | List submitted sitemaps |
 | `get_sitemap` | Get details of a specific sitemap |
 | `submit_sitemap` | Submit a new sitemap |
 | `delete_sitemap` | Remove a sitemap |
+
+### Operations (1 tool)
+
+| Tool | Description |
+|------|-------------|
+| `health_snapshot` | Runtime diagnostics snapshot for cache, concurrency, quota, idempotency, and per-tool success/failure counters |
 
 ### Computed Intelligence (7 tools)
 
@@ -148,10 +157,10 @@ Tools that combine data from multiple Google APIs in a single call, using `Promi
 | Tool | Description |
 |------|-------------|
 | `page_health_dashboard` | Unified page report: URL inspection + search analytics + PageSpeed Insights + CrUX |
-| `indexing_health_report` | Batch indexing status for top pages or manual URL lists with coverage aggregation and quota tracking |
+| `indexing_health_report` | Batch indexing status from analytics/manual/sitemap/combined URL sources with coverage + template aggregation |
 | `serp_feature_tracking` | Monitor search appearance trends (rich results, FAQ, etc.) over time |
 | `cannibalization_resolver` | Detect keyword cannibalization + recommend redirect/consolidate/differentiate |
-| `drop_alerts` | Automated traffic/position drop detection with configurable thresholds |
+| `drop_alerts` | Automated traffic/position drop detection with seasonal suppression and change-point trend signals |
 
 ### Adjacent APIs (10 tools)
 
@@ -181,6 +190,30 @@ Direct access to related Google APIs.
 
 **Auto-pagination** — `enhanced_search_analytics` and `detect_quick_wins` accept `maxRows` (up to 100,000) to fetch beyond the 25K per-request API limit.
 
+**Cursor retrieval** — `search_analytics_cursor` returns one page plus `pageInfo.nextCursor` so agents can stream large result sets in deterministic chunks instead of one giant payload.
+
+**Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters.
+
+**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, and optional `markdownReport` for copy/paste handoff.
+
+**Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
+
+**Standard response envelope** — every response (success and error) includes:
+- `schemaVersion`
+- `requestId`
+- `mode`
+- `summary.whatChanged`
+- `summary.whyItMatters`
+- `summary.suggestedNextTool` (when a deterministic next step is known)
+
+The original payload fields are preserved at top-level for backward compatibility (for example, `rows`, `comparisons`, `features`, `error`, etc.).
+
+**Tool planning hints** — `ListTools` now includes richer annotations (read-only flag plus cost/latency/quota hints), and selected high-usage tools include inline input examples in their descriptions.
+
+**Runtime reliability controls** — Phase 2 adds global/per-tool concurrency limiting, quota-budget guardrails (fail-fast before quota burn), and idempotency support for mutating retries (currently `indexing_publish` via `idempotencyKey`).
+
+**Observability controls** — telemetry emits one structured event per tool call (tool name, latency, retries, quota estimate, cache/idempotency flags). Enable `GSC_DEBUG_MODE=true` for redacted request/response traces, and use `health_snapshot` for runtime diagnostics.
+
 **Error handling** — all errors return structured MCP payloads with `isError: true`, specific error codes (`AUTH_ERROR`, `QUOTA_ERROR`, `PERMISSION_ERROR`), and actionable messages.
 
 ## Environment Variables
@@ -189,17 +222,27 @@ Direct access to related Google APIs.
 |----------|----------|-------------|
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes | Path to service account JSON key file |
 | `GOOGLE_CLOUD_API_KEY` | No | Google Cloud API key for CrUX tools only |
+| `GSC_CACHE_TTL_SEC` | No | Default response cache TTL in seconds (default: `120`) |
+| `GSC_GLOBAL_CONCURRENCY` | No | Max concurrent in-flight tool executions across the server (default: `8`) |
+| `GSC_QUOTA_BUDGET_GLOBAL_DAILY` | No | Daily global guardrail budget for quota-sensitive tools (default: `5000`) |
+| `GSC_IDEMPOTENCY_TTL_SEC` | No | TTL for idempotency replay records (default: `86400`) |
+| `GSC_TELEMETRY_ENABLED` | No | Emit structured telemetry events to stderr for every tool call (default: `true`) |
+| `GSC_DEBUG_MODE` | No | Include redacted request/response traces in response metadata (default: `false`) |
 
 ## Development
 
 ```bash
 pnpm install
 pnpm build      # TypeScript compile to dist/
-pnpm test       # Vitest (119 tests)
+pnpm test       # Vitest (166 tests)
 pnpm lint       # Type check only (tsc --noEmit)
 ```
 
 CI runs on every PR: lint + test + build across Node 18, 20, 22.
+
+Operational runbook: see `docs/operations.md` for telemetry fields, redaction behavior, and health snapshot usage.
+
+Release/process docs: `CHANGELOG.md`, `docs/releasing.md`, and migration notes in `docs/migrations/`.
 
 ## License
 

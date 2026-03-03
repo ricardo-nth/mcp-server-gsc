@@ -4,6 +4,12 @@ import { MobileFriendlyTestSchema } from '../src/schemas/mobilefriendly.js';
 import { PageSpeedInsightsSchema } from '../src/schemas/pagespeed.js';
 import { IndexingPublishSchema, IndexingStatusSchema } from '../src/schemas/indexing.js';
 import { CrUXQuerySchema, CrUXHistorySchema } from '../src/schemas/crux.js';
+import { RecommendNextActionsSchema } from '../src/schemas/recommendations.js';
+import { QuickWinsSchema } from '../src/schemas/analytics.js';
+import { CannibalizationSchema } from '../src/schemas/computed.js';
+import { DropAlertsSchema, IndexingHealthReportSchema } from '../src/schemas/computed2.js';
+import { RunSeoAuditWorkflowSchema } from '../src/schemas/workflow.js';
+import { HealthSnapshotSchema } from '../src/schemas/operations.js';
 
 describe('Sites CRUD schemas', () => {
   it('GetSiteSchema requires siteUrl', () => {
@@ -111,6 +117,14 @@ describe('IndexingPublishSchema', () => {
   it('rejects bare paths', () => {
     expect(() => IndexingPublishSchema.parse({ url: '/page/path' })).toThrow();
   });
+
+  it('accepts idempotencyKey for safe retries', () => {
+    const result = IndexingPublishSchema.parse({
+      url: 'https://example.com/page',
+      idempotencyKey: 'publish-2026-03-03-001',
+    });
+    expect(result.idempotencyKey).toBe('publish-2026-03-03-001');
+  });
 });
 
 describe('IndexingStatusSchema', () => {
@@ -216,5 +230,92 @@ describe('CrUX schemas', () => {
   it('CrUXQuerySchema and CrUXHistorySchema are independent objects', () => {
     // They should parse identically but not be the same reference
     expect(CrUXQuerySchema).not.toBe(CrUXHistorySchema);
+  });
+});
+
+describe('RecommendNextActionsSchema', () => {
+  it('provides sane defaults for recommendation modeling', () => {
+    const result = RecommendNextActionsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+    });
+
+    expect(result.rowLimit).toBe(1000);
+    expect(result.topActions).toBe(5);
+    expect(result.minImpressions).toBe(80);
+    expect(result.includeCwv).toBe(true);
+  });
+});
+
+describe('Phase 4 schema extensions', () => {
+  it('QuickWinsSchema supports intentAware option', () => {
+    const result = QuickWinsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      intentAware: true,
+    });
+    expect(result.intentAware).toBe(true);
+  });
+
+  it('CannibalizationSchema supports intentAware option', () => {
+    const result = CannibalizationSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 14,
+      intentAware: true,
+    });
+    expect(result.intentAware).toBe(true);
+  });
+
+  it('IndexingHealthReportSchema accepts sitemap and combined sources', () => {
+    const sitemap = IndexingHealthReportSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      source: 'sitemap',
+      sitemapUrls: ['https://example.com/sitemap.xml'],
+      days: 7,
+    });
+    const combined = IndexingHealthReportSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      source: 'combined',
+      sitemapUrls: ['https://example.com/sitemap.xml'],
+      urls: ['https://example.com/a'],
+      days: 7,
+    });
+    expect(sitemap.source).toBe('sitemap');
+    expect(combined.source).toBe('combined');
+  });
+
+  it('DropAlertsSchema supports seasonal and change-point controls', () => {
+    const result = DropAlertsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      seasonalAdjustment: true,
+      includeChangePoints: true,
+      changePointSensitivity: 3,
+    });
+    expect(result.seasonalAdjustment).toBe(true);
+    expect(result.includeChangePoints).toBe(true);
+    expect(result.changePointSensitivity).toBe(3);
+  });
+});
+
+describe('RunSeoAuditWorkflowSchema', () => {
+  it('supports profile defaults and markdown flag', () => {
+    const result = RunSeoAuditWorkflowSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      markdown: true,
+    });
+
+    expect(result.profile).toBe('technical');
+    expect(result.topN).toBe(25);
+    expect(result.rowLimit).toBe(1000);
+    expect(result.markdown).toBe(true);
+  });
+});
+
+describe('HealthSnapshotSchema', () => {
+  it('defaults includeToolMetrics to true', () => {
+    const result = HealthSnapshotSchema.parse({});
+    expect(result.includeToolMetrics).toBe(true);
   });
 });

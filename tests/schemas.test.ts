@@ -3,6 +3,7 @@ import {
   SearchAnalyticsSchema,
   EnhancedSearchAnalyticsSchema,
   QuickWinsSchema,
+  SearchAnalyticsCursorSchema,
 } from '../src/schemas/analytics.js';
 import { IndexInspectSchema } from '../src/schemas/inspection.js';
 import {
@@ -161,6 +162,28 @@ describe('QuickWinsSchema', () => {
     expect(result.positionRangeMin).toBe(4);
     expect(result.positionRangeMax).toBe(10);
     expect(result.maxRows).toBe(25000);
+  });
+});
+
+describe('SearchAnalyticsCursorSchema', () => {
+  it('defaults pageSize and maxRows', () => {
+    const result = SearchAnalyticsCursorSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      startDate: '2025-01-01',
+      endDate: '2025-01-31',
+    });
+    expect(result.pageSize).toBe(5000);
+    expect(result.maxRows).toBe(100000);
+  });
+
+  it('accepts cursor-only continuation payloads', () => {
+    const result = SearchAnalyticsCursorSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      startDate: '2025-01-01',
+      endDate: '2025-01-31',
+      cursor: 'opaque-cursor-token',
+    });
+    expect(result.cursor).toBe('opaque-cursor-token');
   });
 });
 

@@ -8,7 +8,47 @@ import {
 } from '../schemas/computed2.js';
 import { resolveDateRange, comparePeriods, formatDate } from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
+import { detectChangePoints, detectPageTemplate } from '../utils/seo-analysis.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
+
+function parseSitemapLocs(xml: string): string[] {
+  const matches = Array.from(xml.matchAll(/<loc>([^<]+)<\/loc>/gi));
+  return matches
+    .map((match) => match[1]?.trim())
+    .filter((value): value is string => Boolean(value));
+}
+
+async function fetchSitemapUrls(seedSitemapUrls: string[], maxUrls: number): Promise<string[]> {
+  const queue = [...seedSitemapUrls];
+  const visited = new Set<string>();
+  const urls: string[] = [];
+
+  while (queue.length > 0 && urls.length < maxUrls) {
+    const current = queue.shift()!;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    try {
+      const response = await fetch(current);
+      if (!response.ok) continue;
+      const xml = await response.text();
+      const locs = parseSitemapLocs(xml);
+
+      for (const loc of locs) {
+        if (loc.endsWith('.xml')) {
+          if (!visited.has(loc)) queue.push(loc);
+        } else {
+          urls.push(loc);
+          if (urls.length >= maxUrls) break;
+        }
+      }
+    } catch {
+      // Ignore malformed or inaccessible sitemap URLs.
+    }
+  }
+
+  return urls;
+}
 
 // ---------------------------------------------------------------------------
 // page_health_dashboard
@@ -149,37 +189,75 @@ export async function handleIndexingHealthReport(
   const args = IndexingHealthReportSchema.parse(raw);
 
   // Step 1: Collect URLs from the selected source
+  const urlBuckets: string[][] = [];
   let urls: string[] = [];
   let sourceDetails: Record<string, unknown> = {};
 
-  if (args.source === 'manual') {
-    urls = [...(args.urls ?? [])].slice(0, args.topN);
-    sourceDetails = {
-      mode: 'manual',
+  if (args.source === 'manual' || args.source === 'combined') {
+    const manualUrls = [...(args.urls ?? [])].slice(0, args.topN);
+    if (manualUrls.length > 0) {
+      urlBuckets.push(manualUrls);
+    }
+    sourceDetails.manual = {
       requestedUrls: args.urls?.length ?? 0,
-      inspectedUrls: urls.length,
-    };
-  } else {
-    const { startDate, endDate } = resolveDateRange(args);
-    const analyticsRes = await service.searchAnalytics(args.siteUrl, {
-      startDate,
-      endDate,
-      dimensions: ['page'],
-      rowLimit: args.topN,
-    });
-    const rows =
-      (analyticsRes.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
-    urls = rows
-      .map((row) => row.keys?.[0])
-      .filter((u): u is string => !!u)
-      .slice(0, args.topN);
-    sourceDetails = {
-      mode: 'analytics',
-      dateRange: { startDate, endDate },
-      rowsFetched: rows.length,
-      inspectedUrls: urls.length,
+      candidateUrls: manualUrls.length,
     };
   }
+
+  if (args.source === 'analytics' || args.source === 'combined') {
+    if (args.days || (args.startDate && args.endDate)) {
+      const { startDate, endDate } = resolveDateRange(args);
+      const analyticsRes = await service.searchAnalytics(args.siteUrl, {
+        startDate,
+        endDate,
+        dimensions: ['page'],
+        rowLimit: args.topN,
+      });
+      const rows =
+        (analyticsRes.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
+      const analyticsUrls = rows
+        .map((row) => row.keys?.[0])
+        .filter((u): u is string => !!u)
+        .slice(0, args.topN);
+      if (analyticsUrls.length > 0) {
+        urlBuckets.push(analyticsUrls);
+      }
+      sourceDetails.analytics = {
+        dateRange: { startDate, endDate },
+        rowsFetched: rows.length,
+        candidateUrls: analyticsUrls.length,
+      };
+    } else if (args.source === 'analytics') {
+      throw new Error('source="analytics" requires either days or startDate/endDate.');
+    } else {
+      sourceDetails.analytics = {
+        skipped: true,
+        reason: 'No date range provided for analytics branch in combined mode.',
+      };
+    }
+  }
+
+  if (args.source === 'sitemap' || args.source === 'combined') {
+    const sitemapSeeds = [...(args.sitemapUrls ?? [])];
+    const sitemapUrls = await fetchSitemapUrls(sitemapSeeds, args.topN);
+    if (sitemapUrls.length > 0) {
+      urlBuckets.push(sitemapUrls);
+    }
+    sourceDetails.sitemap = {
+      seeds: sitemapSeeds.length,
+      candidateUrls: sitemapUrls.length,
+    };
+  }
+
+  const deduped = Array.from(new Set(urlBuckets.flat()));
+  urls = deduped.slice(0, args.topN);
+
+  sourceDetails = {
+    mode: args.source,
+    ...sourceDetails,
+    deduplicatedUrls: deduped.length,
+    inspectedUrls: urls.length,
+  };
 
   if (urls.length === 0) {
     return jsonResult({
@@ -250,6 +328,11 @@ export async function handleIndexingHealthReport(
     notIndexed,
     inspectionErrors,
     byCoverageState,
+    byTemplate: inspections.reduce((acc, item) => {
+      const template = detectPageTemplate(item.url, args.templateRules ?? []);
+      acc[template] = (acc[template] ?? 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
     urls: inspections.map((item) => {
       const inspection = (item.result as Record<string, unknown>)
         ?.inspectionResult as Record<string, unknown> | undefined;
@@ -258,6 +341,7 @@ export async function handleIndexingHealthReport(
         | undefined;
       return {
         url: item.url,
+        template: detectPageTemplate(item.url, args.templateRules ?? []),
         verdict: (indexStatus?.verdict as string) ?? null,
         coverageState: (indexStatus?.coverageState as string) ?? null,
         lastCrawlTime: (indexStatus?.lastCrawlTime as string) ?? null,
@@ -542,6 +626,24 @@ export async function handleDropAlerts(
   const recentMap = new Map<string, SearchAnalyticsRow>();
   for (const row of recent) recentMap.set(row.keys?.[0] ?? '', row);
 
+  let seasonalPriorMap = new Map<string, SearchAnalyticsRow>();
+  if (args.seasonalAdjustment) {
+    const seasonalRecentStart = new Date(`${periodA.startDate}T00:00:00.000Z`);
+    const seasonalRecentEnd = new Date(`${periodA.endDate}T00:00:00.000Z`);
+    const seasonalPriorStart = new Date(seasonalRecentStart);
+    const seasonalPriorEnd = new Date(seasonalRecentEnd);
+    seasonalPriorStart.setUTCDate(seasonalPriorStart.getUTCDate() - 364);
+    seasonalPriorEnd.setUTCDate(seasonalPriorEnd.getUTCDate() - 364);
+
+    const seasonalPriorResponse = await service.searchAnalytics(args.siteUrl, {
+      ...baseBody,
+      startDate: formatDate(seasonalPriorStart),
+      endDate: formatDate(seasonalPriorEnd),
+    });
+    const seasonalPriorRows = (seasonalPriorResponse.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
+    seasonalPriorMap = new Map(seasonalPriorRows.map((row) => [row.keys?.[0] ?? '', row]));
+  }
+
   const alerts = prior
     .filter((row) => (row.clicks ?? 0) >= args.minClicks)
     .map((priorRow) => {
@@ -557,6 +659,16 @@ export async function handleDropAlerts(
             )
           : 0;
 
+      const seasonalPriorClicks = seasonalPriorMap.get(page)?.clicks ?? null;
+      const seasonalDropPct =
+        seasonalPriorClicks && clicksPrior > 0
+          ? Number((((clicksPrior - seasonalPriorClicks) / clicksPrior) * 100).toFixed(1))
+          : null;
+      const seasonalSuppressed =
+        args.seasonalAdjustment &&
+        seasonalDropPct !== null &&
+        seasonalDropPct >= args.threshold * 0.6;
+
       return {
         page,
         clicksPrior,
@@ -567,10 +679,48 @@ export async function handleDropAlerts(
         impressionsRecent: recentRow?.impressions ?? 0,
         positionPrior: Number((priorRow.position ?? 0).toFixed(1)),
         positionRecent: recentRow ? Number((recentRow.position ?? 0).toFixed(1)) : null,
+        seasonalDropPct,
+        seasonalSuppressed,
       };
     })
-    .filter((d) => d.dropPct >= args.threshold)
+    .filter((d) => d.dropPct >= args.threshold && !d.seasonalSuppressed)
     .sort((a, b) => b.clicksLost - a.clicksLost);
+
+  const topAlertPages = alerts.slice(0, 5).map((alert) => alert.page);
+  const changePointsByPage: Record<string, unknown> = {};
+
+  if (args.includeChangePoints) {
+    await Promise.all(
+      topAlertPages.map(async (page) => {
+        const trendResponse = await service.searchAnalytics(args.siteUrl, {
+          startDate: periodB.startDate,
+          endDate: periodA.endDate,
+          dimensions: ['date', 'page'],
+          rowLimit: args.rowLimit,
+          dimensionFilterGroups: [
+            {
+              groupType: 'and',
+              filters: [{ dimension: 'page', operator: 'equals', expression: page }],
+            },
+          ],
+        });
+        const trendRows = (trendResponse.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
+        const series = trendRows
+          .map((row) => ({
+            date: row.keys?.[0] ?? '',
+            ctr: Number((((row.ctr ?? 0) * 100)).toFixed(2)),
+            position: Number((row.position ?? 0).toFixed(2)),
+          }))
+          .filter((item) => item.date.length > 0)
+          .sort((a, b) => a.date.localeCompare(b.date));
+
+        changePointsByPage[page] = {
+          points: detectChangePoints(series, args.changePointSensitivity),
+          seriesLength: series.length,
+        };
+      }),
+    );
+  }
 
   return jsonResult({
     siteUrl: args.siteUrl,
@@ -578,8 +728,11 @@ export async function handleDropAlerts(
     priorPeriod: periodB,
     threshold: args.threshold,
     minClicks: args.minClicks,
+    seasonalAdjustment: args.seasonalAdjustment,
+    includeChangePoints: args.includeChangePoints,
     alertCount: alerts.length,
     totalClicksLost: alerts.reduce((s, a) => s + a.clicksLost, 0),
+    changePointsByPage,
     alerts,
   });
 }
