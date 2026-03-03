@@ -1,6 +1,6 @@
 # mcp-server-gsc-pro
 
-Enhanced MCP server for Google Search Console. 32 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
+Enhanced MCP server for Google Search Console. 33 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
 
 ## Who this is for
 
@@ -110,15 +110,16 @@ With global exports, your `.mcp.json` simplifies to:
 
 > The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
 
-## Tools (32)
+## Tools (33)
 
-### Core (10 tools)
+### Core (11 tools)
 
 | Tool | Description |
 |------|-------------|
 | `list_sites` | List all GSC properties accessible to the service account |
 | `gsc_healthcheck` | Lightweight preflight check for auth + optional API key availability |
 | `search_analytics` | Query clicks/impressions/CTR/position with filtering by page, query, country, device, search type |
+| `search_analytics_cursor` | Cursor-style analytics pagination for high-volume retrieval up to 100K rows |
 | `enhanced_search_analytics` | Same + regex filters, quick-wins detection, auto-pagination up to 100K rows |
 | `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance (positions 4-10) |
 | `index_inspect` | Check indexing status, crawl info, mobile usability, rich results for a URL |
@@ -181,6 +182,8 @@ Direct access to related Google APIs.
 
 **Auto-pagination** — `enhanced_search_analytics` and `detect_quick_wins` accept `maxRows` (up to 100,000) to fetch beyond the 25K per-request API limit.
 
+**Cursor retrieval** — `search_analytics_cursor` returns one page plus `pageInfo.nextCursor` so agents can stream large result sets in deterministic chunks instead of one giant payload.
+
 **Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
 
 **Standard response envelope** — every response (success and error) includes:
@@ -195,6 +198,8 @@ The original payload fields are preserved at top-level for backward compatibilit
 
 **Tool planning hints** — `ListTools` now includes richer annotations (read-only flag plus cost/latency/quota hints), and selected high-usage tools include inline input examples in their descriptions.
 
+**Runtime reliability controls** — Phase 2 adds global/per-tool concurrency limiting, quota-budget guardrails (fail-fast before quota burn), and idempotency support for mutating retries (currently `indexing_publish` via `idempotencyKey`).
+
 **Error handling** — all errors return structured MCP payloads with `isError: true`, specific error codes (`AUTH_ERROR`, `QUOTA_ERROR`, `PERMISSION_ERROR`), and actionable messages.
 
 ## Environment Variables
@@ -203,6 +208,10 @@ The original payload fields are preserved at top-level for backward compatibilit
 |----------|----------|-------------|
 | `GOOGLE_APPLICATION_CREDENTIALS` | Yes | Path to service account JSON key file |
 | `GOOGLE_CLOUD_API_KEY` | No | Google Cloud API key for CrUX tools only |
+| `GSC_CACHE_TTL_SEC` | No | Default response cache TTL in seconds (default: `120`) |
+| `GSC_GLOBAL_CONCURRENCY` | No | Max concurrent in-flight tool executions across the server (default: `8`) |
+| `GSC_QUOTA_BUDGET_GLOBAL_DAILY` | No | Daily global guardrail budget for quota-sensitive tools (default: `5000`) |
+| `GSC_IDEMPOTENCY_TTL_SEC` | No | TTL for idempotency replay records (default: `86400`) |
 
 ## Development
 

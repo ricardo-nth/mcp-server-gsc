@@ -36,14 +36,14 @@ Goal: make tool calls easier, faster, and more deterministic for agents.
 
 Goal: improve resilience under multi-agent and high-volume usage.
 
-- [ ] Add in-memory response caching with TTL + cache metadata fields:
-  - [ ] `cacheHit`
-  - [ ] `cacheAgeSec`
-  - [ ] `cacheKey`
-- [ ] Add per-tool and global concurrency controls
-- [ ] Add configurable quota budget guardrails (fail-fast before quota burn)
-- [ ] Add cursor/stream style retrieval for large analytics datasets
-- [ ] Add idempotency keys for mutating actions (`indexing_publish`, etc.)
+- [x] Add in-memory response caching with TTL + cache metadata fields:
+  - [x] `cacheHit`
+  - [x] `cacheAgeSec`
+  - [x] `cacheKey`
+- [x] Add per-tool and global concurrency controls
+- [x] Add configurable quota budget guardrails (fail-fast before quota burn)
+- [x] Add cursor/stream style retrieval for large analytics datasets
+- [x] Add idempotency keys for mutating actions (`indexing_publish`, etc.)
 
 ## Phase 3: Intelligence Layer V1
 

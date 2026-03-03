@@ -111,6 +111,14 @@ describe('IndexingPublishSchema', () => {
   it('rejects bare paths', () => {
     expect(() => IndexingPublishSchema.parse({ url: '/page/path' })).toThrow();
   });
+
+  it('accepts idempotencyKey for safe retries', () => {
+    const result = IndexingPublishSchema.parse({
+      url: 'https://example.com/page',
+      idempotencyKey: 'publish-2026-03-03-001',
+    });
+    expect(result.idempotencyKey).toBe('publish-2026-03-03-001');
+  });
 });
 
 describe('IndexingStatusSchema', () => {

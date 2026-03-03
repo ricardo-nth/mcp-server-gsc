@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { handleBatchInspect, handleComparePeriods } from '../src/tools/computed.js';
-import { handleDetectQuickWins } from '../src/tools/analytics.js';
+import { handleDetectQuickWins, handleSearchAnalyticsCursor } from '../src/tools/analytics.js';
 import {
   handleIndexingHealthReport,
   handlePageHealthDashboard,
@@ -158,6 +158,53 @@ describe('Tool handlers', () => {
 
     expect((service.searchAnalytics as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
     expect(payload.rowsAnalyzed).toBe(25001);
+  });
+
+  it('search_analytics_cursor returns nextCursor for incremental retrieval', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            rows: [
+              { keys: ['query-1'], clicks: 10, impressions: 100 },
+              { keys: ['query-2'], clicks: 8, impressions: 70 },
+            ],
+          },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            rows: [{ keys: ['query-3'], clicks: 4, impressions: 50 }],
+          },
+        }),
+    } as unknown as SearchConsoleService;
+
+    const first = parseResult(
+      await handleSearchAnalyticsCursor(service, {
+        siteUrl: 'sc-domain:example.com',
+        days: 7,
+        dimensions: ['query'],
+        pageSize: 2,
+        maxRows: 3,
+      }),
+    );
+
+    const firstPageInfo = first.pageInfo as Record<string, unknown>;
+    expect(firstPageInfo.hasMore).toBe(true);
+    expect(typeof firstPageInfo.nextCursor).toBe('string');
+
+    const second = parseResult(
+      await handleSearchAnalyticsCursor(service, {
+        siteUrl: 'sc-domain:example.com',
+        days: 7,
+        cursor: firstPageInfo.nextCursor,
+      }),
+    );
+    const secondPageInfo = second.pageInfo as Record<string, unknown>;
+
+    expect(secondPageInfo.hasMore).toBe(false);
+    expect(secondPageInfo.nextCursor).toBeNull();
+    expect((second.rows as Array<Record<string, unknown>>).length).toBe(1);
   });
 
   it('pagespeed_insights falls back to input URL when response id is missing', async () => {

@@ -3,10 +3,28 @@ import {
   SearchAnalyticsSchema,
   EnhancedSearchAnalyticsSchema,
   QuickWinsSchema,
+  SearchAnalyticsCursorSchema,
 } from '../schemas/analytics.js';
 import { resolveDateRange } from '../utils/dates.js';
 import { paginateSearchAnalytics } from '../utils/pagination.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
+
+interface SearchAnalyticsCursorState {
+  siteUrl: string;
+  body: Record<string, unknown>;
+  nextStartRow: number;
+  pageSize: number;
+  maxRows: number;
+}
+
+function encodeCursor(state: SearchAnalyticsCursorState): string {
+  return Buffer.from(JSON.stringify(state), 'utf8').toString('base64url');
+}
+
+function decodeCursor(token: string): SearchAnalyticsCursorState {
+  const decoded = Buffer.from(token, 'base64url').toString('utf8');
+  return JSON.parse(decoded) as SearchAnalyticsCursorState;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -269,5 +287,80 @@ export async function handleDetectQuickWins(
     },
     rowsAnalyzed: rows.length,
     maxRows: args.maxRows,
+  });
+}
+
+export async function handleSearchAnalyticsCursor(
+  service: SearchConsoleService,
+  raw: unknown,
+): Promise<ToolResult> {
+  const args = SearchAnalyticsCursorSchema.parse(raw);
+
+  let state: SearchAnalyticsCursorState;
+  if (args.cursor) {
+    state = decodeCursor(args.cursor);
+  } else {
+    const { startDate, endDate } = resolveDateRange(args);
+    const body: Record<string, unknown> = {
+      startDate,
+      endDate,
+      dimensions: args.dimensions,
+      searchType: args.type,
+      aggregationType: args.aggregationType,
+      dataState: args.dataState,
+    };
+
+    const filterGroups = buildFilters(args);
+    if (filterGroups) body.dimensionFilterGroups = filterGroups;
+
+    state = {
+      siteUrl: args.siteUrl,
+      body,
+      nextStartRow: 0,
+      pageSize: args.pageSize,
+      maxRows: args.maxRows,
+    };
+  }
+
+  const remainingRows = Math.max(0, state.maxRows - state.nextStartRow);
+  const rowLimit = Math.min(state.pageSize, remainingRows);
+
+  if (rowLimit <= 0) {
+    return jsonResult({
+      rows: [],
+      pageInfo: {
+        hasMore: false,
+        nextCursor: null,
+        startRow: state.nextStartRow,
+        rowLimit: 0,
+      },
+    });
+  }
+
+  const response = await service.searchAnalytics(state.siteUrl, {
+    ...state.body,
+    startRow: state.nextStartRow,
+    rowLimit,
+  });
+
+  const rows = ((response.data as { rows?: SearchAnalyticsRow[] }).rows ?? []) as SearchAnalyticsRow[];
+  const nextStartRow = state.nextStartRow + rows.length;
+  const hasMore = rows.length === rowLimit && nextStartRow < state.maxRows;
+
+  return jsonResult({
+    rows,
+    pageInfo: {
+      hasMore,
+      startRow: state.nextStartRow,
+      rowLimit,
+      fetchedRows: rows.length,
+      maxRows: state.maxRows,
+      nextCursor: hasMore
+        ? encodeCursor({
+            ...state,
+            nextStartRow,
+          })
+        : null,
+    },
   });
 }

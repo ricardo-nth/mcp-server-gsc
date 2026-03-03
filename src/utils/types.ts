@@ -86,6 +86,7 @@ export interface EnvelopeOptions {
   mode: ResponseMode;
   toolName: string;
   summary: ResponseSummary;
+  metadata?: Record<string, unknown>;
 }
 
 function stringifyForText(value: unknown): string {
@@ -174,6 +175,7 @@ function envelopePayload(payload: unknown, options: EnvelopeOptions): Record<str
     schemaVersion: options.schemaVersion,
     requestId: options.requestId,
     mode: options.mode,
+    ...(options.metadata ?? {}),
     summary: {
       ...options.summary,
       whatChanged:

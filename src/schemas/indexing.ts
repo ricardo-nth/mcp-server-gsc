@@ -13,6 +13,14 @@ export const IndexingPublishSchema = z.object({
     .optional()
     .default('URL_UPDATED')
     .describe('Notification type: URL_UPDATED (request crawl) or URL_DELETED (request removal). Default: URL_UPDATED'),
+  idempotencyKey: z
+    .string()
+    .min(8)
+    .max(128)
+    .optional()
+    .describe(
+      'Optional idempotency key for safe retries. Reusing the same key with identical intent returns the original publish result without issuing another mutation.',
+    ),
 });
 
 /** indexing_status tool schema */
