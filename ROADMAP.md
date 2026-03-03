@@ -63,13 +63,13 @@ Goal: convert raw analytics into actionable decisions.
 
 Goal: deepen SEO usefulness beyond basic KPI inspection.
 
-- [ ] Add query clustering + intent labeling
-- [ ] Add page template segmentation (blog/docs/product/location/etc.)
-- [ ] Add seasonal anomaly detection for drop alerts
-- [ ] Add change-point detection for CTR/position trends
-- [ ] Extend `indexing_health_report` source options:
-  - [ ] `sitemap`
-  - [ ] combined sources with deduplication
+- [x] Add query clustering + intent labeling
+- [x] Add page template segmentation (blog/docs/product/location/etc.)
+- [x] Add seasonal anomaly detection for drop alerts
+- [x] Add change-point detection for CTR/position trends
+- [x] Extend `indexing_health_report` source options:
+  - [x] `sitemap`
+  - [x] combined sources with deduplication
 
 ## Phase 5: Orchestrated Agent Workflows
 

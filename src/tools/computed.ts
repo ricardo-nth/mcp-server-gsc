@@ -10,6 +10,7 @@ import {
 } from '../schemas/computed.js';
 import { comparePeriods, resolveDateRange } from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
+import { clusterQuery, labelQueryIntent } from '../utils/seo-analysis.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
 // ---------------------------------------------------------------------------
@@ -259,6 +260,12 @@ export async function handleCannibalization(
 
       return {
         query,
+        ...(args.intentAware
+          ? {
+              intent: labelQueryIntent(query),
+              cluster: clusterQuery(query),
+            }
+          : {}),
         pageCount: pages.length,
         totalImpressions,
         positionVariance: Number(variance.toFixed(2)),
@@ -292,6 +299,7 @@ export async function handleCannibalization(
 
   return jsonResult({
     dateRange: { startDate, endDate },
+    intentAware: args.intentAware,
     cannibalizationIssues: cannibalized.length,
     queries: cannibalized,
   });

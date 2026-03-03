@@ -63,6 +63,11 @@ export const CannibalizationSchema = SiteUrlSchema.merge(DateRangeSchema).extend
     .max(25000)
     .default(10000)
     .describe('Max rows to fetch'),
+  intentAware: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('When true, labels query intent and deterministic clusters for intent-aware cannibalization review.'),
 });
 
 /** diff_keywords tool schema */

@@ -5,6 +5,7 @@ import {
   handleIndexingHealthReport,
   handlePageHealthDashboard,
   handleSerpFeatureTracking,
+  handleDropAlerts,
 } from '../src/tools/computed2.js';
 import { handlePageSpeedInsights } from '../src/tools/pagespeed.js';
 import type { SearchConsoleService } from '../src/service.js';
@@ -160,6 +161,35 @@ describe('Tool handlers', () => {
     expect(payload.rowsAnalyzed).toBe(25001);
   });
 
+  it('detect_quick_wins adds intent and cluster when intentAware is enabled', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: {
+          rows: [
+            {
+              keys: ['best crm software', 'https://example.com/crm'],
+              clicks: 5,
+              impressions: 300,
+              ctr: 0.01,
+              position: 6,
+            },
+          ],
+        },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleDetectQuickWins(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      intentAware: true,
+    });
+    const payload = parseResult(result);
+    const first = (payload.quickWins as Array<Record<string, unknown>>)[0];
+
+    expect(first.intent).toBe('commercial');
+    expect(typeof first.cluster).toBe('string');
+  });
+
   it('search_analytics_cursor returns nextCursor for incremental retrieval', async () => {
     const service = {
       searchAnalytics: vi
@@ -278,6 +308,79 @@ describe('Tool handlers', () => {
     expect((service.searchAnalytics as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
     expect((service.indexInspect as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
     expect(payload.totalUrls).toBe(2);
+  });
+
+  it('indexing_health_report supports combined source with sitemap deduplication', async () => {
+    const service = {
+      indexInspect: vi.fn().mockResolvedValue({
+        data: {
+          inspectionResult: {
+            indexStatusResult: { verdict: 'PASS', coverageState: 'Submitted and indexed' },
+          },
+        },
+      }),
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: {
+          rows: [{ keys: ['https://example.com/a'] }, { keys: ['https://example.com/b'] }],
+        },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({
+        ok: true,
+        text: async () =>
+          '<urlset><url><loc>https://example.com/b</loc></url><url><loc>https://example.com/c</loc></url></urlset>',
+      } as unknown as Response);
+
+    const result = await handleIndexingHealthReport(service, {
+      siteUrl: 'sc-domain:example.com',
+      source: 'combined',
+      sitemapUrls: ['https://example.com/sitemap.xml'],
+      topN: 10,
+    });
+    const payload = parseResult(result);
+
+    fetchMock.mockRestore();
+
+    expect(payload.source).toBe('combined');
+    expect(payload.totalUrls).toBe(2);
+    expect(payload.byTemplate).toBeDefined();
+  });
+
+  it('drop_alerts includes change-point output when enabled', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: { rows: [{ keys: ['https://example.com/a'], clicks: 10, impressions: 100, position: 8 }] },
+        })
+        .mockResolvedValueOnce({
+          data: { rows: [{ keys: ['https://example.com/a'], clicks: 100, impressions: 500, position: 3 }] },
+        })
+        .mockResolvedValueOnce({
+          data: {
+            rows: [
+              { keys: ['2026-01-01', 'https://example.com/a'], ctr: 0.2, position: 3 },
+              { keys: ['2026-01-02', 'https://example.com/a'], ctr: 0.19, position: 3.1 },
+              { keys: ['2026-01-03', 'https://example.com/a'], ctr: 0.05, position: 8.5 },
+              { keys: ['2026-01-04', 'https://example.com/a'], ctr: 0.04, position: 9 },
+            ],
+          },
+        }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleDropAlerts(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      threshold: 50,
+      includeChangePoints: true,
+    });
+    const payload = parseResult(result);
+
+    expect(payload.alertCount).toBe(1);
+    expect(payload.changePointsByPage).toBeDefined();
   });
 
   it('serp_feature_tracking preserves explicit date ranges in chunked windows', async () => {

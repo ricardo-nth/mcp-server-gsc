@@ -117,6 +117,11 @@ export const QuickWinsSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
     .describe(
       'Maximum total rows to fetch with auto-pagination (default 25000, max 100000).',
     ),
+  intentAware: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('When true, adds deterministic query intent labels and clusters to each quick-win item.'),
 });
 
 /** search_analytics_cursor tool schema */

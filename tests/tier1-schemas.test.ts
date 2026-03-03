@@ -5,6 +5,9 @@ import { PageSpeedInsightsSchema } from '../src/schemas/pagespeed.js';
 import { IndexingPublishSchema, IndexingStatusSchema } from '../src/schemas/indexing.js';
 import { CrUXQuerySchema, CrUXHistorySchema } from '../src/schemas/crux.js';
 import { RecommendNextActionsSchema } from '../src/schemas/recommendations.js';
+import { QuickWinsSchema } from '../src/schemas/analytics.js';
+import { CannibalizationSchema } from '../src/schemas/computed.js';
+import { DropAlertsSchema, IndexingHealthReportSchema } from '../src/schemas/computed2.js';
 
 describe('Sites CRUD schemas', () => {
   it('GetSiteSchema requires siteUrl', () => {
@@ -239,5 +242,56 @@ describe('RecommendNextActionsSchema', () => {
     expect(result.topActions).toBe(5);
     expect(result.minImpressions).toBe(80);
     expect(result.includeCwv).toBe(true);
+  });
+});
+
+describe('Phase 4 schema extensions', () => {
+  it('QuickWinsSchema supports intentAware option', () => {
+    const result = QuickWinsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      intentAware: true,
+    });
+    expect(result.intentAware).toBe(true);
+  });
+
+  it('CannibalizationSchema supports intentAware option', () => {
+    const result = CannibalizationSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 14,
+      intentAware: true,
+    });
+    expect(result.intentAware).toBe(true);
+  });
+
+  it('IndexingHealthReportSchema accepts sitemap and combined sources', () => {
+    const sitemap = IndexingHealthReportSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      source: 'sitemap',
+      sitemapUrls: ['https://example.com/sitemap.xml'],
+      days: 7,
+    });
+    const combined = IndexingHealthReportSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      source: 'combined',
+      sitemapUrls: ['https://example.com/sitemap.xml'],
+      urls: ['https://example.com/a'],
+      days: 7,
+    });
+    expect(sitemap.source).toBe('sitemap');
+    expect(combined.source).toBe('combined');
+  });
+
+  it('DropAlertsSchema supports seasonal and change-point controls', () => {
+    const result = DropAlertsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      seasonalAdjustment: true,
+      includeChangePoints: true,
+      changePointSensitivity: 3,
+    });
+    expect(result.seasonalAdjustment).toBe(true);
+    expect(result.includeChangePoints).toBe(true);
+    expect(result.changePointSensitivity).toBe(3);
   });
 });

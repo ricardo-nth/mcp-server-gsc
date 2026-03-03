@@ -12,7 +12,7 @@ Wraps the full Google Search Console API surface into MCP tools, then adds a lay
 
 **Raw API access** — search analytics with filtering, URL inspection, sitemaps CRUD, sites CRUD.
 
-**Computed intelligence** — period comparison with delta tracking, content decay detection, keyword cannibalization analysis, CTR benchmarking, keyword diff, batch inspection, SERP feature tracking, automated drop alerts, and page-level health dashboards that pull from 4 APIs in a single call.
+**Computed intelligence** — period comparison with delta tracking, content decay detection, keyword cannibalization analysis, CTR benchmarking, keyword diff, batch inspection, SERP feature tracking, automated drop alerts with seasonal suppression and change-point flags, and page-level health dashboards that pull from 4 APIs in a single call.
 
 **Reliability** — auto-retry with exponential backoff, structured error types with fix instructions, input validation on all fields, auto-pagination for large result sets, and partial-failure tolerance on multi-API tools.
 
@@ -150,10 +150,10 @@ Tools that combine data from multiple Google APIs in a single call, using `Promi
 | Tool | Description |
 |------|-------------|
 | `page_health_dashboard` | Unified page report: URL inspection + search analytics + PageSpeed Insights + CrUX |
-| `indexing_health_report` | Batch indexing status for top pages or manual URL lists with coverage aggregation and quota tracking |
+| `indexing_health_report` | Batch indexing status from analytics/manual/sitemap/combined URL sources with coverage + template aggregation |
 | `serp_feature_tracking` | Monitor search appearance trends (rich results, FAQ, etc.) over time |
 | `cannibalization_resolver` | Detect keyword cannibalization + recommend redirect/consolidate/differentiate |
-| `drop_alerts` | Automated traffic/position drop detection with configurable thresholds |
+| `drop_alerts` | Automated traffic/position drop detection with seasonal suppression and change-point trend signals |
 
 ### Adjacent APIs (10 tools)
 
@@ -184,6 +184,8 @@ Direct access to related Google APIs.
 **Auto-pagination** — `enhanced_search_analytics` and `detect_quick_wins` accept `maxRows` (up to 100,000) to fetch beyond the 25K per-request API limit.
 
 **Cursor retrieval** — `search_analytics_cursor` returns one page plus `pageInfo.nextCursor` so agents can stream large result sets in deterministic chunks instead of one giant payload.
+
+**Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters.
 
 **Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
 

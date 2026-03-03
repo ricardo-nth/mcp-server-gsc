@@ -7,6 +7,7 @@ import {
 } from '../schemas/analytics.js';
 import { resolveDateRange } from '../utils/dates.js';
 import { paginateSearchAnalytics } from '../utils/pagination.js';
+import { clusterQuery, labelQueryIntent } from '../utils/seo-analysis.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
 interface SearchAnalyticsCursorState {
@@ -276,9 +277,17 @@ export async function handleDetectQuickWins(
     positionRangeMax: args.positionRangeMax,
   });
 
+  const enrichedQuickWins = args.intentAware
+    ? quickWins.map((item) => ({
+        ...item,
+        intent: labelQueryIntent(item.query),
+        cluster: clusterQuery(item.query),
+      }))
+    : quickWins;
+
   return jsonResult({
-    quickWins,
-    totalOpportunities: quickWins.length,
+    quickWins: enrichedQuickWins,
+    totalOpportunities: enrichedQuickWins.length,
     thresholds: {
       minImpressions: args.minImpressions,
       maxCtr: args.maxCtr,
@@ -287,6 +296,7 @@ export async function handleDetectQuickWins(
     },
     rowsAnalyzed: rows.length,
     maxRows: args.maxRows,
+    intentAware: args.intentAware,
   });
 }
 
