@@ -117,17 +117,29 @@ describe('IndexingHealthReportSchema', () => {
     ).toThrow();
   });
 
-  it('rejects sitemaps source (not yet implemented)', () => {
+  it('accepts manual source with explicit URLs', () => {
+    const result = IndexingHealthReportSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      source: 'manual',
+      urls: ['https://example.com/page-1', 'https://example.com/page-2'],
+    });
+
+    expect(result.source).toBe('manual');
+    expect(result.urls).toHaveLength(2);
+  });
+
+  it('requires urls when source is manual', () => {
     expect(() =>
       IndexingHealthReportSchema.parse({
         siteUrl: 'sc-domain:example.com',
         days: 28,
-        source: 'sitemaps',
+        source: 'manual',
       }),
     ).toThrow();
   });
 
-  it('rejects both source (not yet implemented)', () => {
+  it('rejects unsupported source values', () => {
     expect(() =>
       IndexingHealthReportSchema.parse({
         siteUrl: 'sc-domain:example.com',

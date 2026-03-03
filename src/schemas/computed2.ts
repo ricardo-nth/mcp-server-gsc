@@ -29,25 +29,43 @@ export const PageHealthDashboardSchema = SiteUrlSchema.merge(DateRangeSchema).ex
 });
 
 /** indexing_health_report tool schema */
-export const IndexingHealthReportSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
-  source: z
-    .enum(['analytics'] as const)
-    .optional()
-    .default('analytics')
-    .describe('URL source: "analytics" (top pages by clicks)'),
-  topN: z
-    .number()
-    .min(1)
-    .max(100)
-    .optional()
-    .default(50)
-    .describe('Maximum URLs to inspect (max 100, respects 2000/day API quota)'),
-  languageCode: z
-    .string()
-    .optional()
-    .default('en-US')
-    .describe('Language code for inspection messages'),
-});
+export const IndexingHealthReportSchema = SiteUrlSchema.merge(DateRangeSchema)
+  .extend({
+    source: z
+      .enum(['analytics', 'manual'] as const)
+      .optional()
+      .default('analytics')
+      .describe('URL source: "analytics" (top pages by clicks) or "manual" (inspect provided URLs)'),
+    urls: z
+      .array(
+        z.string().url('Each URL must be fully-qualified (e.g. https://example.com/page)'),
+      )
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('Required when source="manual". URLs to inspect directly.'),
+    topN: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .default(50)
+      .describe('Maximum URLs to inspect (max 100, respects 2000/day API quota)'),
+    languageCode: z
+      .string()
+      .optional()
+      .default('en-US')
+      .describe('Language code for inspection messages'),
+  })
+  .superRefine((data, ctx) => {
+    if (data.source === 'manual' && (!data.urls || data.urls.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['urls'],
+        message: 'urls is required when source is "manual"',
+      });
+    }
+  });
 
 /** serp_feature_tracking tool schema */
 export const SerpFeatureTrackingSchema = SiteUrlSchema.merge(DateRangeSchema).extend({

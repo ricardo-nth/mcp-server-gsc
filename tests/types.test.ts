@@ -6,6 +6,7 @@ describe('Tool result helpers', () => {
     const result = jsonResult({ value: Infinity });
     const parsed = JSON.parse(result.content[0].text) as Record<string, unknown>;
     expect(parsed.value).toBe('Infinity');
+    expect((result.structuredContent as Record<string, unknown>).value).toBe(Infinity);
   });
 
   it('errorResult accepts structured payloads', () => {
@@ -13,5 +14,6 @@ describe('Tool result helpers', () => {
     const parsed = JSON.parse(result.content[0].text) as Record<string, unknown>;
     expect(result.isError).toBe(true);
     expect(parsed.code).toBe('TEST_ERROR');
+    expect((result.structuredContent as Record<string, unknown>).code).toBe('TEST_ERROR');
   });
 });

@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 
 import { GSCError, SearchConsoleService } from './service.js';
-import { errorResult } from './utils/types.js';
+import { errorResult, jsonResult } from './utils/types.js';
 
 // Schemas
 import {
@@ -104,7 +104,7 @@ const GOOGLE_CLOUD_API_KEY = process.env.GOOGLE_CLOUD_API_KEY;
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-  { name: 'mcp-server-gsc-pro', version: '1.2.0' },
+  { name: 'mcp-server-gsc-pro', version: '1.2.1' },
   { capabilities: { tools: {} } },
 );
 
@@ -116,6 +116,12 @@ const TOOLS = [
   {
     name: 'list_sites',
     description: 'List all sites available in Google Search Console',
+    inputSchema: zodToJsonSchema(z.object({})),
+  },
+  {
+    name: 'gsc_healthcheck',
+    description:
+      'Quick preflight check for agent workflows: validates Search Console auth by listing sites and reports optional API key availability.',
     inputSchema: zodToJsonSchema(z.object({})),
   },
   {
@@ -295,8 +301,21 @@ const TOOLS = [
   },
 ] as const;
 
+const MUTATING_TOOLS = new Set([
+  'submit_sitemap',
+  'delete_sitemap',
+  'add_site',
+  'delete_site',
+  'indexing_publish',
+]);
+
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [...TOOLS],
+  tools: TOOLS.map((tool) => ({
+    ...tool,
+    annotations: {
+      readOnlyHint: !MUTATING_TOOLS.has(tool.name),
+    },
+  })),
 }));
 
 // ---------------------------------------------------------------------------
@@ -308,7 +327,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const service = new SearchConsoleService(GOOGLE_APPLICATION_CREDENTIALS, GOOGLE_CLOUD_API_KEY);
 
   try {
-    if (!args && name !== 'list_sites') {
+    if (!args && name !== 'list_sites' && name !== 'gsc_healthcheck') {
       return errorResult({
         error: 'Arguments are required',
       });
@@ -317,6 +336,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     switch (name) {
       case 'list_sites':
         return await handleListSites(service);
+      case 'gsc_healthcheck': {
+        const response = await service.listSites();
+        const entries = (response.data?.siteEntry ?? []) as Array<unknown>;
+        return jsonResult({
+          ok: true,
+          auth: 'ok',
+          siteCount: entries.length,
+          cruxApiKeyConfigured: Boolean(GOOGLE_CLOUD_API_KEY),
+          indexingApiConfigured: true,
+        });
+      }
       case 'search_analytics':
         return await handleSearchAnalytics(service, args);
       case 'enhanced_search_analytics':

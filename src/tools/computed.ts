@@ -385,22 +385,32 @@ export async function handleBatchInspect(
   // Rate-limit to 1 request per second as per GSC API limits
   const fns = args.urls.map(
     (url) => () =>
-      service.indexInspect({
-        siteUrl: args.siteUrl,
-        inspectionUrl: url,
-        languageCode: args.languageCode,
-      }),
+      service
+        .indexInspect({
+          siteUrl: args.siteUrl,
+          inspectionUrl: url,
+          languageCode: args.languageCode,
+        })
+        .then((res) => ({
+          url,
+          result: res.data,
+          error: null as string | null,
+        }))
+        .catch((err: Error) => ({
+          url,
+          result: null as unknown,
+          error: err?.message ?? 'Inspection failed',
+        })),
   );
 
-  const results = await rateLimited(fns, 1000);
-
-  const inspections = results.map((res, i) => ({
-    url: args.urls[i],
-    result: res.data,
-  }));
+  const inspections = await rateLimited(fns, 1000);
+  const successCount = inspections.filter((item) => !item.error).length;
+  const errorCount = inspections.length - successCount;
 
   return jsonResult({
     total: inspections.length,
+    successCount,
+    errorCount,
     inspections,
   });
 }

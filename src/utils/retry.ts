@@ -15,7 +15,9 @@ export async function withRetry<T>(
     } catch (err: unknown) {
       const status = getStatusCode(err);
       const isRetryable =
-        status === 429 || (status !== undefined && status >= 500);
+        status === 429 ||
+        (status !== undefined && status >= 500) ||
+        isRetryableNetworkError(err);
 
       if (!isRetryable || attempt === maxRetries) throw err;
 
@@ -59,4 +61,31 @@ function getStatusCode(err: unknown): number | undefined {
     }
   }
   return undefined;
+}
+
+function isRetryableNetworkError(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+
+  const e = err as Record<string, unknown>;
+  const code = typeof e.code === 'string' ? e.code.toUpperCase() : '';
+  const message =
+    err instanceof Error ? err.message.toLowerCase() : '';
+
+  const transientCodes = new Set([
+    'ECONNRESET',
+    'ECONNABORTED',
+    'ETIMEDOUT',
+    'EAI_AGAIN',
+    'ENOTFOUND',
+    'EPIPE',
+  ]);
+
+  if (transientCodes.has(code)) return true;
+
+  return (
+    message.includes('network') ||
+    message.includes('socket hang up') ||
+    message.includes('timed out') ||
+    message.includes('connection reset')
+  );
 }

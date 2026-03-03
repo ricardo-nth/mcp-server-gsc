@@ -68,20 +68,28 @@ export interface TextContent {
 export interface ToolResult {
   [key: string]: unknown;
   content: TextContent[];
+  structuredContent?: unknown;
   isError?: boolean;
+}
+
+function stringifyForText(value: unknown): string {
+  return JSON.stringify(
+    value,
+    (_key: string, item: unknown) => {
+      if (typeof item === 'number' && !Number.isFinite(item)) {
+        return String(item);
+      }
+      return item;
+    },
+    2,
+  );
 }
 
 /** Helper to create a JSON text result */
 export function jsonResult(data: unknown): ToolResult {
-  const serialize = (_key: string, value: unknown) => {
-    if (typeof value === 'number' && !Number.isFinite(value)) {
-      return String(value);
-    }
-    return value;
-  };
-
   return {
-    content: [{ type: 'text', text: JSON.stringify(data, serialize, 2) }],
+    structuredContent: data,
+    content: [{ type: 'text', text: stringifyForText(data) }],
   };
 }
 
@@ -89,7 +97,8 @@ export function jsonResult(data: unknown): ToolResult {
 export function errorResult(error: string | Record<string, unknown>): ToolResult {
   const payload = typeof error === 'string' ? { error } : error;
   return {
-    content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
+    structuredContent: payload,
+    content: [{ type: 'text', text: stringifyForText(payload) }],
     isError: true,
   };
 }

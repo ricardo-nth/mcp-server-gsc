@@ -1,6 +1,6 @@
 # mcp-server-gsc-pro
 
-Enhanced MCP server for Google Search Console. 31 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
+Enhanced MCP server for Google Search Console. 32 tools spanning raw API access, computed intelligence, and adjacent Google APIs — designed for AI agents that do SEO work.
 
 ## Who this is for
 
@@ -110,13 +110,14 @@ With global exports, your `.mcp.json` simplifies to:
 
 > The `env` block in `.mcp.json` takes precedence over shell environment variables, so you can still override per-project if needed.
 
-## Tools (31)
+## Tools (32)
 
-### Core (9 tools)
+### Core (10 tools)
 
 | Tool | Description |
 |------|-------------|
 | `list_sites` | List all GSC properties accessible to the service account |
+| `gsc_healthcheck` | Lightweight preflight check for auth + optional API key availability |
 | `search_analytics` | Query clicks/impressions/CTR/position with filtering by page, query, country, device, search type |
 | `enhanced_search_analytics` | Same + regex filters, quick-wins detection, auto-pagination up to 100K rows |
 | `detect_quick_wins` | Find high-impression, low-CTR queries in striking distance (positions 4-10) |
@@ -147,7 +148,7 @@ Tools that combine data from multiple Google APIs in a single call, using `Promi
 | Tool | Description |
 |------|-------------|
 | `page_health_dashboard` | Unified page report: URL inspection + search analytics + PageSpeed Insights + CrUX |
-| `indexing_health_report` | Batch indexing status for top pages with coverage aggregation and quota tracking |
+| `indexing_health_report` | Batch indexing status for top pages or manual URL lists with coverage aggregation and quota tracking |
 | `serp_feature_tracking` | Monitor search appearance trends (rich results, FAQ, etc.) over time |
 | `cannibalization_resolver` | Detect keyword cannibalization + recommend redirect/consolidate/differentiate |
 | `drop_alerts` | Automated traffic/position drop detection with configurable thresholds |

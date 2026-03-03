@@ -148,25 +148,44 @@ export async function handleIndexingHealthReport(
 ): Promise<ToolResult> {
   const args = IndexingHealthReportSchema.parse(raw);
 
-  // Step 1: Collect URLs from top analytics pages
-  const { startDate, endDate } = resolveDateRange(args);
-  const analyticsRes = await service.searchAnalytics(args.siteUrl, {
-    startDate,
-    endDate,
-    dimensions: ['page'],
-    rowLimit: args.topN,
-  });
-  const rows =
-    (analyticsRes.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
-  const urls = rows
-    .map((row) => row.keys?.[0])
-    .filter((u): u is string => !!u)
-    .slice(0, args.topN);
+  // Step 1: Collect URLs from the selected source
+  let urls: string[] = [];
+  let sourceDetails: Record<string, unknown> = {};
+
+  if (args.source === 'manual') {
+    urls = [...(args.urls ?? [])].slice(0, args.topN);
+    sourceDetails = {
+      mode: 'manual',
+      requestedUrls: args.urls?.length ?? 0,
+      inspectedUrls: urls.length,
+    };
+  } else {
+    const { startDate, endDate } = resolveDateRange(args);
+    const analyticsRes = await service.searchAnalytics(args.siteUrl, {
+      startDate,
+      endDate,
+      dimensions: ['page'],
+      rowLimit: args.topN,
+    });
+    const rows =
+      (analyticsRes.data as { rows?: SearchAnalyticsRow[] }).rows ?? [];
+    urls = rows
+      .map((row) => row.keys?.[0])
+      .filter((u): u is string => !!u)
+      .slice(0, args.topN);
+    sourceDetails = {
+      mode: 'analytics',
+      dateRange: { startDate, endDate },
+      rowsFetched: rows.length,
+      inspectedUrls: urls.length,
+    };
+  }
 
   if (urls.length === 0) {
     return jsonResult({
       siteUrl: args.siteUrl,
       source: args.source,
+      sourceDetails,
       totalUrls: 0,
       note: 'No URLs found from the specified source',
       summary: {},
@@ -224,6 +243,7 @@ export async function handleIndexingHealthReport(
   return jsonResult({
     siteUrl: args.siteUrl,
     source: args.source,
+    sourceDetails,
     totalUrls: urls.length,
     quotaUsed: inspections.length,
     indexed,

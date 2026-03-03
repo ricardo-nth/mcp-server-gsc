@@ -1,7 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { handleComparePeriods } from '../src/tools/computed.js';
+import { handleBatchInspect, handleComparePeriods } from '../src/tools/computed.js';
 import { handleDetectQuickWins } from '../src/tools/analytics.js';
-import { handlePageHealthDashboard, handleSerpFeatureTracking } from '../src/tools/computed2.js';
+import {
+  handleIndexingHealthReport,
+  handlePageHealthDashboard,
+  handleSerpFeatureTracking,
+} from '../src/tools/computed2.js';
 import { handlePageSpeedInsights } from '../src/tools/pagespeed.js';
 import type { SearchConsoleService } from '../src/service.js';
 import type { ToolResult } from '../src/utils/types.js';
@@ -174,6 +178,59 @@ describe('Tool handlers', () => {
     const payload = parseResult(result);
 
     expect(payload.url).toBe('https://example.com/page');
+  });
+
+  it('batch_inspect returns partial failures instead of failing the whole call', async () => {
+    const service = {
+      indexInspect: vi
+        .fn()
+        .mockResolvedValueOnce({ data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } } })
+        .mockRejectedValueOnce(new Error('Permission denied')),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleBatchInspect(service, {
+      siteUrl: 'sc-domain:example.com',
+      urls: ['https://example.com/ok', 'https://example.com/fail'],
+      languageCode: 'en-US',
+    });
+    const payload = parseResult(result);
+    const inspections = payload.inspections as Array<Record<string, unknown>>;
+
+    expect(payload.total).toBe(2);
+    expect(payload.successCount).toBe(1);
+    expect(payload.errorCount).toBe(1);
+    expect(inspections[0]?.error).toBeNull();
+    expect(inspections[1]?.error).toContain('Permission denied');
+  });
+
+  it('indexing_health_report supports manual URL source', async () => {
+    const service = {
+      indexInspect: vi.fn().mockResolvedValue({
+        data: {
+          inspectionResult: {
+            indexStatusResult: {
+              verdict: 'PASS',
+              coverageState: 'Submitted and indexed',
+            },
+          },
+        },
+      }),
+      searchAnalytics: vi.fn(),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleIndexingHealthReport(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      source: 'manual',
+      urls: ['https://example.com/a', 'https://example.com/b'],
+      topN: 2,
+    });
+    const payload = parseResult(result);
+
+    expect(payload.source).toBe('manual');
+    expect((service.searchAnalytics as ReturnType<typeof vi.fn>).mock.calls.length).toBe(0);
+    expect((service.indexInspect as ReturnType<typeof vi.fn>).mock.calls.length).toBe(2);
+    expect(payload.totalUrls).toBe(2);
   });
 
   it('serp_feature_tracking preserves explicit date ranges in chunked windows', async () => {
