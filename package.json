@@ -26,10 +26,15 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --exclude tests/mcp-smoke.test.ts",
+    "test:mcp-smoke": "vitest run tests/mcp-smoke.test.ts",
+    "test:watch": "vitest --exclude tests/mcp-smoke.test.ts",
     "lint": "tsc --noEmit -p tsconfig.check.json",
-    "prepublishOnly": "pnpm build && pnpm test"
+    "docs:sync": "tsx scripts/docs-tools.ts sync",
+    "docs:check": "tsx scripts/docs-tools.ts check",
+    "release:check": "tsx scripts/release-check.ts",
+    "package:check": "npm pack --dry-run",
+    "prepublishOnly": "pnpm lint && pnpm test && pnpm build && pnpm test:mcp-smoke && pnpm docs:check && pnpm release:check"
   },
   "engines": {
     "node": ">=18"

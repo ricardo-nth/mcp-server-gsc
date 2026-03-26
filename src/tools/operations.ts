@@ -24,7 +24,8 @@ export async function handleHealthSnapshot(
     summary: {
       status: 'ok',
       runtimeHealthy: true,
-      note: 'Snapshot captures in-memory runtime state for cache, concurrency, quota, and tool counters.',
+      note:
+        'Snapshot captures runtime state for cache, concurrency, quota, persistence, and tool counters.',
       toolMetricsIncluded: args.includeToolMetrics,
       toolCountTracked:
         args.includeToolMetrics && toolMetrics && typeof toolMetrics === 'object'
