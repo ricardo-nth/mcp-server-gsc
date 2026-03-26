@@ -59,7 +59,7 @@ describe('Load behavior tests', () => {
     process.env.GSC_TOOL_CONCURRENCY_SEARCH_ANALYTICS = '2';
 
     try {
-      const runtime = new RuntimeCoordinator();
+      const runtime = new RuntimeCoordinator({ persistencePath: null });
       let active = 0;
       let maxActive = 0;
 

@@ -34,3 +34,15 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Docs check
+        run: pnpm docs:check
+
+      - name: Release check
+        run: pnpm release:check
+
+      - name: MCP smoke test
+        run: pnpm test:mcp-smoke
+
+      - name: Package dry run
+        run: pnpm package:check

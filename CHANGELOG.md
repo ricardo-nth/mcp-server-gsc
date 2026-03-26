@@ -6,6 +6,15 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Planned
+
+- Client-ready HTML report rendering for SEO workflows, with branded templates that can be exported to PDF deliverables.
+- Report packs for common agency use cases such as monthly SEO updates, technical audits, indexing recovery, and content opportunity reviews.
+- Provider abstractions for external SEO data sources so backlink, keyword difficulty, competitor, and traffic-estimate integrations can plug in cleanly later.
+- Ahrefs-ready integration scaffolding built against provider interfaces and test fixtures, so the implementation can land cleanly once API access is available.
+- Stronger professional workflow outputs including issue severity, impact/effort scoring, action ownership, analyst detail mode, and client-safe summaries.
+- Expanded native SEO intelligence on top of Search Console data, including branded vs non-branded segmentation, intent clustering, template grouping, anomaly detection, and stronger cannibalization/action recommendations.
+
 ## [1.2.3] - 2026-03-26
 
 ### Added
@@ -14,10 +23,13 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Operations runbook at `docs/operations.md`.
 - Golden response contract tests, property-based scoring tests, service contract tests, load behavior tests, and regression fixtures.
 - Release/process hygiene docs: `docs/releasing.md`, migration templates, and PR/issue templates.
+- Runtime state persistence for quota guardrails and idempotency replay records, with additive `health_snapshot` persistence metadata.
+- Release automation scripts for docs drift checks, release metadata checks, MCP smoke testing, and package dry-run verification.
 
 ### Changed
 
 - Enforced roadmap governance docs for response-shape changes and compatibility checks.
+- Consolidated MCP tool metadata into a shared runtime registry that now drives both `ListTools` and generated README tool docs.
 
 ## [1.2.2] - 2026-03-03
 

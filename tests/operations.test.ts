@@ -7,7 +7,7 @@ import { TelemetryRecorder, type TelemetrySink } from '../src/utils/telemetry.js
 
 describe('Phase 6 observability utilities', () => {
   it('health_snapshot handler can omit tool metrics', async () => {
-    const runtime = new RuntimeCoordinator();
+    const runtime = new RuntimeCoordinator({ persistencePath: null });
     runtime.recordToolExecution('search_analytics', 'success', 10);
 
     const result = await handleHealthSnapshot(
@@ -20,6 +20,15 @@ describe('Phase 6 observability utilities', () => {
     expect(payload.toolMetrics).toBeUndefined();
     expect((payload.summary as Record<string, unknown>).toolMetricsIncluded).toBe(false);
     expect((payload.observability as Record<string, unknown>).debugMode).toBe(true);
+    expect(payload.persistence).toEqual({
+      enabled: false,
+      path: null,
+      lastLoadedAt: null,
+      lastSavedAt: null,
+      lastLoadError: null,
+      quotaEntriesPersisted: 0,
+      idempotencyEntriesPersisted: 0,
+    });
   });
 
   it('redacts secret-like keys and bearer tokens', () => {

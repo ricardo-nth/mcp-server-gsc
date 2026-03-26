@@ -1,3 +1,9 @@
+import {
+  readRuntimeState,
+  resolveRuntimeStatePath,
+  writeRuntimeState,
+  type PersistedRuntimeState,
+} from './runtime-state.js';
 import type { ToolResult } from './types.js';
 
 interface CacheEntry {
@@ -16,6 +22,10 @@ interface QuotaState {
   day: string;
   globalUsed: number;
   perToolUsed: Map<string, number>;
+}
+
+export interface RuntimeCoordinatorOptions {
+  persistencePath?: string | null;
 }
 
 export interface QuotaSnapshot {
@@ -48,6 +58,14 @@ export interface CacheMeta {
 export interface IdempotencyMeta {
   idempotencyKey: string | null;
   idempotencyReplay: boolean;
+}
+
+interface PersistenceStatus {
+  enabled: boolean;
+  path: string | null;
+  lastLoadedAt: string | null;
+  lastSavedAt: string | null;
+  lastLoadError: string | null;
 }
 
 function getEnvNumber(name: string, fallback: number): number {
@@ -163,7 +181,113 @@ export class RuntimeCoordinator {
 
   private readonly toolExecutionStats = new Map<string, ToolExecutionStats>();
 
-  private ensureFreshDay(): void {
+  private readonly persistence: PersistenceStatus;
+
+  constructor(options: RuntimeCoordinatorOptions = {}) {
+    const persistenceOverride =
+      'persistencePath' in options ? options.persistencePath : process.env.GSC_RUNTIME_STATE_PATH;
+    const persistencePath = resolveRuntimeStatePath(persistenceOverride);
+    this.persistence = {
+      enabled: persistencePath !== null,
+      path: persistencePath,
+      lastLoadedAt: null,
+      lastSavedAt: null,
+      lastLoadError: null,
+    };
+
+    this.loadPersistedState();
+  }
+
+  private warnPersistence(message: string): void {
+    console.warn(`[runtime] ${message}`);
+  }
+
+  private persistState(): void {
+    if (!this.persistence.enabled || !this.persistence.path) {
+      return;
+    }
+
+    const now = Date.now();
+    for (const [key, entry] of this.idempotency.entries()) {
+      if (now - entry.storedAt > entry.ttlMs) {
+        this.idempotency.delete(key);
+      }
+    }
+
+    const state: PersistedRuntimeState = {
+      schemaVersion: '1',
+      savedAt: new Date().toISOString(),
+      quotaState: {
+        day: this.quotaState.day,
+        globalUsed: this.quotaState.globalUsed,
+        perToolUsed: Array.from(this.quotaState.perToolUsed.entries()).reduce<Record<string, number>>(
+          (acc, [toolName, units]) => {
+            acc[toolName] = units;
+            return acc;
+          },
+          {},
+        ),
+      },
+      idempotency: Array.from(this.idempotency.entries()).map(([key, entry]) => ({
+        key,
+        storedAt: entry.storedAt,
+        ttlMs: entry.ttlMs,
+        value: this.cloneResult(entry.value),
+      })),
+    };
+
+    const saved = writeRuntimeState(this.persistence.path, state);
+    if (saved.error) {
+      this.warnPersistence(`Failed to persist runtime state: ${saved.error}`);
+      return;
+    }
+    this.persistence.lastSavedAt = saved.savedAt;
+  }
+
+  private loadPersistedState(): void {
+    if (!this.persistence.enabled || !this.persistence.path) {
+      return;
+    }
+
+    const loaded = readRuntimeState(this.persistence.path);
+    if (loaded.error) {
+      this.persistence.lastLoadError = loaded.error;
+      this.warnPersistence(`Ignoring persisted runtime state at ${this.persistence.path}: ${loaded.error}`);
+      return;
+    }
+
+    if (!loaded.state) {
+      return;
+    }
+
+    this.quotaState = {
+      day: loaded.state.quotaState.day,
+      globalUsed: loaded.state.quotaState.globalUsed,
+      perToolUsed: new Map(Object.entries(loaded.state.quotaState.perToolUsed)),
+    };
+
+    const now = Date.now();
+    for (const entry of loaded.state.idempotency) {
+      if (now - entry.storedAt > entry.ttlMs) {
+        continue;
+      }
+      this.idempotency.set(entry.key, {
+        storedAt: entry.storedAt,
+        ttlMs: entry.ttlMs,
+        value: this.cloneResult(entry.value),
+      });
+    }
+
+    this.persistence.lastLoadedAt = loaded.state.savedAt;
+    this.persistence.lastSavedAt = loaded.state.savedAt;
+    this.persistence.lastLoadError = null;
+
+    if (this.ensureFreshDay() || loaded.state.idempotency.length !== this.idempotency.size) {
+      this.persistState();
+    }
+  }
+
+  private ensureFreshDay(): boolean {
     const today = getUtcDay();
     if (this.quotaState.day !== today) {
       this.quotaState = {
@@ -171,7 +295,9 @@ export class RuntimeCoordinator {
         globalUsed: 0,
         perToolUsed: new Map<string, number>(),
       };
+      return true;
     }
+    return false;
   }
 
   private cloneResult(result: ToolResult): ToolResult {
@@ -202,18 +328,23 @@ export class RuntimeCoordinator {
     );
   }
 
-  private purgeExpiredEntries(): void {
+  private purgeExpiredEntries(): { cachePurged: boolean; idempotencyPurged: boolean } {
     const now = Date.now();
+    let cachePurged = false;
+    let idempotencyPurged = false;
     for (const [key, entry] of this.cache.entries()) {
       if (now - entry.storedAt > entry.ttlMs) {
         this.cache.delete(key);
+        cachePurged = true;
       }
     }
     for (const [key, entry] of this.idempotency.entries()) {
       if (now - entry.storedAt > entry.ttlMs) {
         this.idempotency.delete(key);
+        idempotencyPurged = true;
       }
     }
+    return { cachePurged, idempotencyPurged };
   }
 
   buildCacheKey(toolName: string, args: unknown): string {
@@ -227,7 +358,10 @@ export class RuntimeCoordinator {
   }
 
   getCached(cacheKey: string): { result: ToolResult; ageSec: number } | null {
-    this.purgeExpiredEntries();
+    const purged = this.purgeExpiredEntries();
+    if (purged.idempotencyPurged) {
+      this.persistState();
+    }
     const entry = this.cache.get(cacheKey);
     if (!entry) {
       return null;
@@ -283,7 +417,7 @@ export class RuntimeCoordinator {
   }
 
   reserveQuota(toolName: string, units: number): QuotaSnapshot {
-    this.ensureFreshDay();
+    const reset = this.ensureFreshDay();
 
     const safeUnits = Math.max(0, units);
     const toolBudget = this.perToolQuotaBudget.get(toolName) ?? Number.POSITIVE_INFINITY;
@@ -306,6 +440,10 @@ export class RuntimeCoordinator {
       this.quotaState.perToolUsed.set(toolName, toolUsed + safeUnits);
     }
 
+    if (reset || safeUnits > 0) {
+      this.persistState();
+    }
+
     return {
       toolUnitsReserved: safeUnits,
       toolUsed: this.quotaState.perToolUsed.get(toolName) ?? toolUsed,
@@ -316,7 +454,10 @@ export class RuntimeCoordinator {
   }
 
   getIdempotentResult(toolName: string, idempotencyKey: string): ToolResult | null {
-    this.purgeExpiredEntries();
+    const purged = this.purgeExpiredEntries();
+    if (purged.idempotencyPurged) {
+      this.persistState();
+    }
     const key = `${toolName}:${idempotencyKey}`;
     const entry = this.idempotency.get(key);
     if (!entry) {
@@ -332,6 +473,7 @@ export class RuntimeCoordinator {
       ttlMs: this.idempotencyTtlSec * 1000,
       value: this.cloneResult(result),
     });
+    this.persistState();
   }
 
   recordToolExecution(toolName: string, status: 'success' | 'failure', latencyMs: number): void {
@@ -355,8 +497,11 @@ export class RuntimeCoordinator {
   }
 
   getHealthSnapshot(): Record<string, unknown> {
-    this.purgeExpiredEntries();
-    this.ensureFreshDay();
+    const purged = this.purgeExpiredEntries();
+    const reset = this.ensureFreshDay();
+    if (purged.idempotencyPurged || reset) {
+      this.persistState();
+    }
 
     const perToolQuotaUsed = Array.from(this.quotaState.perToolUsed.entries())
       .sort(([toolA], [toolB]) => toolA.localeCompare(toolB))
@@ -404,6 +549,15 @@ export class RuntimeCoordinator {
       idempotency: {
         ttlSec: this.idempotencyTtlSec,
         entries: this.idempotency.size,
+      },
+      persistence: {
+        enabled: this.persistence.enabled,
+        path: this.persistence.path,
+        lastLoadedAt: this.persistence.lastLoadedAt,
+        lastSavedAt: this.persistence.lastSavedAt,
+        lastLoadError: this.persistence.lastLoadError,
+        quotaEntriesPersisted: this.quotaState.perToolUsed.size,
+        idempotencyEntriesPersisted: this.idempotency.size,
       },
       concurrency: {
         global: this.globalSemaphore.snapshot(),
