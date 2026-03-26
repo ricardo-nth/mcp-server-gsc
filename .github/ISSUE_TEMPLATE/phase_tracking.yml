@@ -1,0 +1,31 @@
+name: Phase Tracking
+description: Track roadmap phase work in small PR slices
+title: "phase <N>: <short title>"
+labels:
+  - roadmap
+  - phase
+body:
+  - type: markdown
+    attributes:
+      value: "Create one issue per roadmap phase and link checklist items + PRs."
+  - type: input
+    id: phase
+    attributes:
+      label: Roadmap phase
+      placeholder: "Phase 6"
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Checklist items
+      description: Copy the exact checklist items from ROADMAP.md.
+      placeholder: "- [ ] Item 1\n- [ ] Item 2"
+    validations:
+      required: true
+  - type: textarea
+    id: prs
+    attributes:
+      label: PR slices
+      description: Link small PRs that land this phase.
+      placeholder: "- #123\n- #124"

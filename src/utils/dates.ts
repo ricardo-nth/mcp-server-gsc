@@ -6,6 +6,16 @@ export function formatDate(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function parseDateString(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function addUtcDays(date: Date, days: number): Date {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
 /** Get a date N days ago from today (or from a reference date) */
 export function daysAgo(n: number, from?: Date): Date {
   const base = from ? new Date(from) : new Date();
@@ -50,6 +60,34 @@ export function resolveDateRange(args: {
   throw new Error(
     'Either "days" or both "startDate" and "endDate" must be provided.',
   );
+}
+
+export function inclusiveDayCount(startDate: string, endDate: string): number {
+  const start = parseDateString(startDate);
+  const end = parseDateString(endDate);
+  return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+}
+
+/**
+ * Split an explicit caller-provided range into two equal comparison windows.
+ * If the total range is odd-length, the oldest extra day is dropped so both
+ * periods remain equal and directly comparable.
+ */
+export function splitExplicitDateRange(startDate: string, endDate: string): {
+  periodA: { startDate: string; endDate: string };
+  periodB: { startDate: string; endDate: string };
+} {
+  const totalDays = inclusiveDayCount(startDate, endDate);
+  const periodDays = Math.max(1, Math.floor(totalDays / 2));
+  const recentEnd = parseDateString(endDate);
+  const recentStart = addUtcDays(recentEnd, -(periodDays - 1));
+  const priorEnd = addUtcDays(recentStart, -1);
+  const priorStart = addUtcDays(priorEnd, -(periodDays - 1));
+
+  return {
+    periodA: { startDate: formatDate(recentStart), endDate: formatDate(recentEnd) },
+    periodB: { startDate: formatDate(priorStart), endDate: formatDate(priorEnd) },
+  };
 }
 
 /**

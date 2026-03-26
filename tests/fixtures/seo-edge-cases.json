@@ -1,0 +1,40 @@
+{
+  "queries": [
+    {
+      "query": "best crm software",
+      "intent": "commercial",
+      "cluster": "best-crm-software"
+    },
+    {
+      "query": "login dashboard",
+      "intent": "local",
+      "cluster": "dashboard-login"
+    },
+    {
+      "query": "pizza near me",
+      "intent": "local",
+      "cluster": "me-near-pizza"
+    }
+  ],
+  "urls": [
+    {
+      "url": "https://example.com/blog/how-to-scale",
+      "template": "blog"
+    },
+    {
+      "url": "https://example.com/docs/api/reference",
+      "template": "docs"
+    },
+    {
+      "url": "https://example.com/pricing",
+      "template": "product"
+    }
+  ],
+  "changePointSeries": [
+    { "date": "2026-02-01", "ctr": 3.1, "position": 5.2 },
+    { "date": "2026-02-02", "ctr": 3.0, "position": 5.1 },
+    { "date": "2026-02-03", "ctr": 3.2, "position": 5.3 },
+    { "date": "2026-02-04", "ctr": 1.5, "position": 7.8 },
+    { "date": "2026-02-05", "ctr": 1.4, "position": 8.0 }
+  ]
+}

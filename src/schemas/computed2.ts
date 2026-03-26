@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SiteUrlSchema, DateRangeSchema } from './base.js';
+import { inclusiveDayCount } from '../utils/dates.js';
 
 const PSI_CATEGORIES = ['performance', 'accessibility', 'best-practices', 'seo', 'pwa'] as const;
 const PSI_STRATEGIES = ['mobile', 'desktop'] as const;
@@ -32,10 +33,10 @@ export const PageHealthDashboardSchema = SiteUrlSchema.merge(DateRangeSchema).ex
 export const IndexingHealthReportSchema = SiteUrlSchema.merge(DateRangeSchema)
   .extend({
     source: z
-      .enum(['analytics', 'manual'] as const)
+      .enum(['analytics', 'manual', 'sitemap', 'combined'] as const)
       .optional()
       .default('analytics')
-      .describe('URL source: "analytics" (top pages by clicks) or "manual" (inspect provided URLs)'),
+      .describe('URL source: "analytics", "manual", "sitemap", or "combined" (merged + deduplicated).'),
     urls: z
       .array(
         z.string().url('Each URL must be fully-qualified (e.g. https://example.com/page)'),
@@ -43,7 +44,14 @@ export const IndexingHealthReportSchema = SiteUrlSchema.merge(DateRangeSchema)
       .min(1)
       .max(100)
       .optional()
-      .describe('Required when source="manual". URLs to inspect directly.'),
+      .describe('Required when source="manual". Optional additional URLs for source="combined".'),
+    sitemapUrls: z
+      .array(
+        z.string().url('Each sitemap URL must be fully-qualified (e.g. https://example.com/sitemap.xml)'),
+      )
+      .max(20)
+      .optional()
+      .describe('Required when source="sitemap". Optional for source="combined".'),
     topN: z
       .number()
       .min(1)
@@ -56,6 +64,16 @@ export const IndexingHealthReportSchema = SiteUrlSchema.merge(DateRangeSchema)
       .optional()
       .default('en-US')
       .describe('Language code for inspection messages'),
+    templateRules: z
+      .array(
+        z.object({
+          name: z.string().min(1).describe('Template label, e.g. docs, blog, product'),
+          pattern: z.string().min(1).describe('Substring or regex-like literal matched against URL path'),
+        }),
+      )
+      .max(20)
+      .optional()
+      .describe('Optional custom URL template mapping rules applied before built-in template heuristics.'),
   })
   .superRefine((data, ctx) => {
     if (data.source === 'manual' && (!data.urls || data.urls.length === 0)) {
@@ -63,6 +81,13 @@ export const IndexingHealthReportSchema = SiteUrlSchema.merge(DateRangeSchema)
         code: z.ZodIssueCode.custom,
         path: ['urls'],
         message: 'urls is required when source is "manual"',
+      });
+    }
+    if (data.source === 'sitemap' && (!data.sitemapUrls || data.sitemapUrls.length === 0)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['sitemapUrls'],
+        message: 'sitemapUrls is required when source is "sitemap"',
       });
     }
   });
@@ -101,34 +126,75 @@ export const CannibalizationResolverSchema = SiteUrlSchema.merge(DateRangeSchema
 
 /** drop_alerts tool schema — uses own `days` field, not DateRangeSchema,
  *  because comparePeriods() requires a single window size, not start/end. */
-export const DropAlertsSchema = SiteUrlSchema.extend({
-  threshold: z
-    .number()
-    .min(1)
-    .max(100)
-    .optional()
-    .default(50)
-    .describe('Minimum % click drop to flag (default 50)'),
-  minClicks: z
-    .number()
-    .optional()
-    .default(10)
-    .describe('Minimum clicks in prior period for a page to qualify'),
-  days: z
-    .number()
-    .min(1)
-    .max(90)
-    .optional()
-    .default(7)
-    .describe('Comparison window in days (default 7)'),
-  rowLimit: z
-    .number()
-    .min(1)
-    .max(25000)
-    .optional()
-    .default(5000)
-    .describe('Max rows per period query'),
-});
+export const DropAlertsSchema = SiteUrlSchema.merge(DateRangeSchema)
+  .extend({
+    threshold: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .default(50)
+      .describe('Minimum % click drop to flag (default 50)'),
+    minClicks: z
+      .number()
+      .optional()
+      .default(10)
+      .describe('Minimum clicks in prior period for a page to qualify'),
+    days: z
+      .number()
+      .min(1)
+      .max(90)
+      .optional()
+      .default(7)
+      .describe('Comparison window in days (default 7)'),
+    rowLimit: z
+      .number()
+      .min(1)
+      .max(25000)
+      .optional()
+      .default(5000)
+      .describe('Max rows per period query'),
+    seasonalAdjustment: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('When true, suppresses alerts that match comparable seasonal dips from last year.'),
+    includeChangePoints: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe('When true, computes basic change-point flags on CTR/position trend shifts.'),
+    changePointSensitivity: z
+      .number()
+      .min(1)
+      .max(5)
+      .optional()
+      .default(2)
+      .describe('Sensitivity multiplier for change-point detection (higher = stricter).'),
+  })
+  .superRefine((data, ctx) => {
+    const hasStart = data.startDate !== undefined;
+    const hasEnd = data.endDate !== undefined;
+
+    if (hasStart !== hasEnd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: hasStart ? ['endDate'] : ['startDate'],
+        message: 'startDate and endDate must be provided together',
+      });
+    }
+
+    if (hasStart && hasEnd) {
+      const totalDays = inclusiveDayCount(data.startDate!, data.endDate!);
+      if (totalDays < 2 || totalDays > 180) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['startDate'],
+          message: 'Explicit date ranges for drop alerts must span 2 to 180 days inclusive',
+        });
+      }
+    }
+  });
 
 export type PageHealthDashboardInput = z.infer<typeof PageHealthDashboardSchema>;
 export type IndexingHealthReportInput = z.infer<typeof IndexingHealthReportSchema>;

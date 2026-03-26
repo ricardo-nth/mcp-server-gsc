@@ -8,8 +8,9 @@ import {
   CtrAnalysisSchema,
   SearchTypeBreakdownSchema,
 } from '../schemas/computed.js';
-import { comparePeriods, resolveDateRange } from '../utils/dates.js';
+import { comparePeriods, resolveDateRange, splitExplicitDateRange } from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
+import { clusterQuery, labelQueryIntent } from '../utils/seo-analysis.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
 // ---------------------------------------------------------------------------
@@ -145,8 +146,17 @@ export async function handleContentDecay(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = ContentDecaySchema.parse(raw);
-  const halfDays = Math.floor(args.days / 2);
-  const { periodA, periodB } = comparePeriods(halfDays);
+  const hasExplicitRange =
+    raw !== null &&
+    typeof raw === 'object' &&
+    'startDate' in raw &&
+    'endDate' in raw &&
+    (raw as Record<string, unknown>).startDate !== undefined &&
+    (raw as Record<string, unknown>).endDate !== undefined;
+  const { periodA, periodB } =
+    hasExplicitRange && args.startDate && args.endDate
+      ? splitExplicitDateRange(args.startDate, args.endDate)
+      : comparePeriods(Math.floor(args.days / 2));
 
   // periodA = recent, periodB = earlier
   const baseBody: Record<string, unknown> = {
@@ -259,6 +269,12 @@ export async function handleCannibalization(
 
       return {
         query,
+        ...(args.intentAware
+          ? {
+              intent: labelQueryIntent(query),
+              cluster: clusterQuery(query),
+            }
+          : {}),
         pageCount: pages.length,
         totalImpressions,
         positionVariance: Number(variance.toFixed(2)),
@@ -292,6 +308,7 @@ export async function handleCannibalization(
 
   return jsonResult({
     dateRange: { startDate, endDate },
+    intentAware: args.intentAware,
     cannibalizationIssues: cannibalized.length,
     queries: cannibalized,
   });

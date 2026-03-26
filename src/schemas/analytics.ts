@@ -117,8 +117,38 @@ export const QuickWinsSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
     .describe(
       'Maximum total rows to fetch with auto-pagination (default 25000, max 100000).',
     ),
+  intentAware: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('When true, adds deterministic query intent labels and clusters to each quick-win item.'),
+});
+
+/** search_analytics_cursor tool schema */
+export const SearchAnalyticsCursorSchema = SearchAnalyticsSchema.extend({
+  cursor: z
+    .string()
+    .optional()
+    .describe(
+      'Opaque cursor token returned by a previous search_analytics_cursor call. When provided, date/filter parameters are ignored and resumed from cursor state.',
+    ),
+  pageSize: z
+    .number()
+    .min(1)
+    .max(25000)
+    .optional()
+    .default(5000)
+    .describe('Number of rows per page (default 5000, max 25000).'),
+  maxRows: z
+    .number()
+    .min(1)
+    .max(100000)
+    .optional()
+    .default(100000)
+    .describe('Upper bound across cursor pages. Prevents unbounded scans (default 100000).'),
 });
 
 export type SearchAnalyticsInput = z.infer<typeof SearchAnalyticsSchema>;
 export type EnhancedSearchAnalyticsInput = z.infer<typeof EnhancedSearchAnalyticsSchema>;
 export type QuickWinsInput = z.infer<typeof QuickWinsSchema>;
+export type SearchAnalyticsCursorInput = z.infer<typeof SearchAnalyticsCursorSchema>;

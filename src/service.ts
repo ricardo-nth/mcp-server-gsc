@@ -59,7 +59,7 @@ export class GSCQuotaError extends GSCError {
 export class GSCPermissionError extends GSCError {
   constructor(siteUrl: string) {
     super(
-      `No access to "${siteUrl}". Verify the service account has been added as a user in Search Console for this property.`,
+      `No access to "${siteUrl}". Verify the service account has been added as an Owner (not just User) in Search Console for this property. The Indexing API requires Owner-level permission.`,
       'PERMISSION_ERROR',
       403,
     );
