@@ -6,7 +6,12 @@ import {
   CannibalizationResolverSchema,
   DropAlertsSchema,
 } from '../schemas/computed2.js';
-import { resolveDateRange, comparePeriods, formatDate } from '../utils/dates.js';
+import {
+  resolveDateRange,
+  comparePeriods,
+  formatDate,
+  splitExplicitDateRange,
+} from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
 import { detectChangePoints, detectPageTemplate } from '../utils/seo-analysis.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
@@ -598,7 +603,17 @@ export async function handleDropAlerts(
   raw: unknown,
 ): Promise<ToolResult> {
   const args = DropAlertsSchema.parse(raw);
-  const { periodA, periodB } = comparePeriods(args.days);
+  const hasExplicitRange =
+    raw !== null &&
+    typeof raw === 'object' &&
+    'startDate' in raw &&
+    'endDate' in raw &&
+    (raw as Record<string, unknown>).startDate !== undefined &&
+    (raw as Record<string, unknown>).endDate !== undefined;
+  const { periodA, periodB } =
+    hasExplicitRange && args.startDate && args.endDate
+      ? splitExplicitDateRange(args.startDate, args.endDate)
+      : comparePeriods(args.days);
 
   const baseBody: Record<string, unknown> = {
     dimensions: ['page'],

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SiteUrlSchema, DateRangeSchema, SearchTypeValues, DeviceValues } from './base.js';
+import { inclusiveDayCount } from '../utils/dates.js';
 
 /** compare_periods tool schema */
 export const ComparePeriodsSchema = SiteUrlSchema.extend({
@@ -32,24 +33,49 @@ export const ComparePeriodsSchema = SiteUrlSchema.extend({
 });
 
 /** detect_content_decay tool schema */
-export const ContentDecaySchema = SiteUrlSchema.extend({
-  days: z
-    .number()
-    .min(14)
-    .max(180)
-    .default(56)
-    .describe('Total lookback period in days (split into two halves for comparison)'),
-  minClicksInPrior: z
-    .number()
-    .default(10)
-    .describe('Minimum clicks in the earlier period to qualify'),
-  rowLimit: z
-    .number()
-    .min(1)
-    .max(25000)
-    .default(5000)
-    .describe('Max rows per period query'),
-});
+export const ContentDecaySchema = SiteUrlSchema.merge(DateRangeSchema)
+  .extend({
+    days: z
+      .number()
+      .min(14)
+      .max(180)
+      .optional()
+      .default(56)
+      .describe('Total lookback period in days (split into two halves for comparison)'),
+    minClicksInPrior: z
+      .number()
+      .default(10)
+      .describe('Minimum clicks in the earlier period to qualify'),
+    rowLimit: z
+      .number()
+      .min(1)
+      .max(25000)
+      .default(5000)
+      .describe('Max rows per period query'),
+  })
+  .superRefine((data, ctx) => {
+    const hasStart = data.startDate !== undefined;
+    const hasEnd = data.endDate !== undefined;
+
+    if (hasStart !== hasEnd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: hasStart ? ['endDate'] : ['startDate'],
+        message: 'startDate and endDate must be provided together',
+      });
+    }
+
+    if (hasStart && hasEnd) {
+      const totalDays = inclusiveDayCount(data.startDate!, data.endDate!);
+      if (totalDays < 14 || totalDays > 180) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['startDate'],
+          message: 'Explicit date ranges for content decay must span 14 to 180 days inclusive',
+        });
+      }
+    }
+  });
 
 /** detect_cannibalization tool schema */
 export const CannibalizationSchema = SiteUrlSchema.merge(DateRangeSchema).extend({

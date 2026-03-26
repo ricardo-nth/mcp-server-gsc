@@ -72,4 +72,49 @@ describe('run_seo_audit_workflow', () => {
     expect(statuses).toContain('success');
     expect((payload.executiveSummary as Record<string, unknown>).overallStatus).toBe('partial');
   });
+
+  it('uses explicit date ranges consistently across workflow steps', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: {
+          rows: [],
+        },
+      }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      startDate: '2026-01-01',
+      endDate: '2026-01-28',
+      profile: 'content',
+    });
+
+    const calls = (service.searchAnalytics as ReturnType<typeof vi.fn>).mock.calls;
+    const requestBodies = calls.map(([, body]) => body as Record<string, unknown>);
+
+    expect(requestBodies).toContainEqual(
+      expect.objectContaining({
+        startDate: '2026-01-01',
+        endDate: '2026-01-28',
+      }),
+    );
+    expect(requestBodies).toContainEqual(
+      expect.objectContaining({
+        startDate: '2026-01-15',
+        endDate: '2026-01-28',
+      }),
+    );
+    expect(requestBodies).toContainEqual(
+      expect.objectContaining({
+        startDate: '2026-01-01',
+        endDate: '2026-01-14',
+      }),
+    );
+  });
 });

@@ -109,6 +109,7 @@ import { withRetryTraceContext } from './utils/retry.js';
 import { redactSensitiveData } from './utils/redaction.js';
 import { ConsoleTelemetrySink, TelemetryRecorder } from './utils/telemetry.js';
 import { handleHealthSnapshot } from './tools/operations.js';
+import { normalizeQuotaTrackedArgs } from './utils/quota.js';
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -139,7 +140,7 @@ const DEBUG_MODE = envFlag('GSC_DEBUG_MODE', false);
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-  { name: 'mcp-server-gsc-pro', version: '1.2.1' },
+  { name: 'mcp-server-gsc-pro', version: '1.2.2' },
   { capabilities: { tools: {} } },
 );
 
@@ -768,7 +769,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
     }
 
-    quotaUnitsEstimated = runtime.estimateQuotaUnits(name, args);
+    const quotaArgs = normalizeQuotaTrackedArgs(name, args);
+    quotaUnitsEstimated = runtime.estimateQuotaUnits(name, quotaArgs);
     quotaSnapshot = runtime.reserveQuota(name, quotaUnitsEstimated);
 
     const traced = await withRetryTraceContext(async () =>

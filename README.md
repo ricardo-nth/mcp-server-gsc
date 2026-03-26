@@ -234,7 +234,7 @@ The original payload fields are preserved at top-level for backward compatibilit
 ```bash
 pnpm install
 pnpm build      # TypeScript compile to dist/
-pnpm test       # Vitest (166 tests)
+pnpm test       # Vitest (168 tests)
 pnpm lint       # Type check only (tsc --noEmit)
 ```
 

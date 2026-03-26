@@ -123,7 +123,7 @@ export async function handleRunSeoAuditWorkflow(
       await runStep('drop_alerts', () =>
         handleDropAlerts(service, {
           siteUrl: args.siteUrl,
-          days: args.days ?? 7,
+          ...(args.days ? { days: args.days } : { startDate, endDate }),
           threshold: 40,
           seasonalAdjustment: true,
           includeChangePoints: true,
@@ -149,7 +149,7 @@ export async function handleRunSeoAuditWorkflow(
       await runStep('detect_content_decay', () =>
         handleContentDecay(service, {
           siteUrl: args.siteUrl,
-          days: args.days ?? 56,
+          ...(args.days ? { days: args.days } : { startDate, endDate }),
           rowLimit: args.rowLimit,
         }),
       ),

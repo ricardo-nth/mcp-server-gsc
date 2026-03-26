@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { RuntimeCoordinator } from '../src/utils/runtime.js';
 import { jsonResult } from '../src/utils/types.js';
+import { normalizeQuotaTrackedArgs } from '../src/utils/quota.js';
 
 describe('RuntimeCoordinator', () => {
   it('returns cached responses with cache age metadata', () => {
@@ -70,5 +71,22 @@ describe('RuntimeCoordinator', () => {
     expect(globalQuota.used).toBe(1);
     expect(toolMetrics.search_analytics.totalCalls).toBe(2);
     expect(toolMetrics.search_analytics.avgLatencyMs).toBe(31.5);
+  });
+
+  it('does not consume quota guardrails when quota-tracked args fail validation', () => {
+    const runtime = new RuntimeCoordinator();
+
+    expect(() =>
+      normalizeQuotaTrackedArgs('batch_inspect', {
+        siteUrl: 'sc-domain:example.com',
+        urls: ['not-a-url'],
+      }),
+    ).toThrow();
+
+    const snapshot = runtime.getHealthSnapshot();
+    const quota = snapshot.quota as Record<string, unknown>;
+    const globalQuota = quota.global as Record<string, unknown>;
+
+    expect(globalQuota.used).toBe(0);
   });
 });

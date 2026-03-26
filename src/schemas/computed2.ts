@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SiteUrlSchema, DateRangeSchema } from './base.js';
+import { inclusiveDayCount } from '../utils/dates.js';
 
 const PSI_CATEGORIES = ['performance', 'accessibility', 'best-practices', 'seo', 'pwa'] as const;
 const PSI_STRATEGIES = ['mobile', 'desktop'] as const;
@@ -125,51 +126,75 @@ export const CannibalizationResolverSchema = SiteUrlSchema.merge(DateRangeSchema
 
 /** drop_alerts tool schema — uses own `days` field, not DateRangeSchema,
  *  because comparePeriods() requires a single window size, not start/end. */
-export const DropAlertsSchema = SiteUrlSchema.extend({
-  threshold: z
-    .number()
-    .min(1)
-    .max(100)
-    .optional()
-    .default(50)
-    .describe('Minimum % click drop to flag (default 50)'),
-  minClicks: z
-    .number()
-    .optional()
-    .default(10)
-    .describe('Minimum clicks in prior period for a page to qualify'),
-  days: z
-    .number()
-    .min(1)
-    .max(90)
-    .optional()
-    .default(7)
-    .describe('Comparison window in days (default 7)'),
-  rowLimit: z
-    .number()
-    .min(1)
-    .max(25000)
-    .optional()
-    .default(5000)
-    .describe('Max rows per period query'),
-  seasonalAdjustment: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe('When true, suppresses alerts that match comparable seasonal dips from last year.'),
-  includeChangePoints: z
-    .boolean()
-    .optional()
-    .default(true)
-    .describe('When true, computes basic change-point flags on CTR/position trend shifts.'),
-  changePointSensitivity: z
-    .number()
-    .min(1)
-    .max(5)
-    .optional()
-    .default(2)
-    .describe('Sensitivity multiplier for change-point detection (higher = stricter).'),
-});
+export const DropAlertsSchema = SiteUrlSchema.merge(DateRangeSchema)
+  .extend({
+    threshold: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .default(50)
+      .describe('Minimum % click drop to flag (default 50)'),
+    minClicks: z
+      .number()
+      .optional()
+      .default(10)
+      .describe('Minimum clicks in prior period for a page to qualify'),
+    days: z
+      .number()
+      .min(1)
+      .max(90)
+      .optional()
+      .default(7)
+      .describe('Comparison window in days (default 7)'),
+    rowLimit: z
+      .number()
+      .min(1)
+      .max(25000)
+      .optional()
+      .default(5000)
+      .describe('Max rows per period query'),
+    seasonalAdjustment: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe('When true, suppresses alerts that match comparable seasonal dips from last year.'),
+    includeChangePoints: z
+      .boolean()
+      .optional()
+      .default(true)
+      .describe('When true, computes basic change-point flags on CTR/position trend shifts.'),
+    changePointSensitivity: z
+      .number()
+      .min(1)
+      .max(5)
+      .optional()
+      .default(2)
+      .describe('Sensitivity multiplier for change-point detection (higher = stricter).'),
+  })
+  .superRefine((data, ctx) => {
+    const hasStart = data.startDate !== undefined;
+    const hasEnd = data.endDate !== undefined;
+
+    if (hasStart !== hasEnd) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: hasStart ? ['endDate'] : ['startDate'],
+        message: 'startDate and endDate must be provided together',
+      });
+    }
+
+    if (hasStart && hasEnd) {
+      const totalDays = inclusiveDayCount(data.startDate!, data.endDate!);
+      if (totalDays < 2 || totalDays > 180) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['startDate'],
+          message: 'Explicit date ranges for drop alerts must span 2 to 180 days inclusive',
+        });
+      }
+    }
+  });
 
 export type PageHealthDashboardInput = z.infer<typeof PageHealthDashboardSchema>;
 export type IndexingHealthReportInput = z.infer<typeof IndexingHealthReportSchema>;
