@@ -4,7 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on Keep a Changelog and this project follows Semantic Versioning.
 
-## [Unreleased] (planned v1.2.3)
+## [Unreleased]
+
+## [1.2.3] - 2026-03-26
 
 ### Added
 

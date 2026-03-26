@@ -140,7 +140,7 @@ const DEBUG_MODE = envFlag('GSC_DEBUG_MODE', false);
 // ---------------------------------------------------------------------------
 
 const server = new Server(
-  { name: 'mcp-server-gsc-pro', version: '1.2.2' },
+  { name: 'mcp-server-gsc-pro', version: '1.2.3' },
   { capabilities: { tools: {} } },
 );
 
