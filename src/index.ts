@@ -77,6 +77,7 @@ import { redactSensitiveData } from './utils/redaction.js';
 import { ConsoleTelemetrySink, TelemetryRecorder } from './utils/telemetry.js';
 import { handleHealthSnapshot } from './tools/operations.js';
 import { normalizeQuotaTrackedArgs } from './utils/quota.js';
+import { createSeoProviderRegistry } from './providers/index.js';
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -114,6 +115,7 @@ const server = new Server(
 const RESPONSE_SCHEMA_VERSION = '1.0.0';
 const runtime = new RuntimeCoordinator();
 const telemetry = new TelemetryRecorder(new ConsoleTelemetrySink(), TELEMETRY_ENABLED);
+const providerRegistry = createSeoProviderRegistry();
 
 type ToolDefinition = {
   name: string;
@@ -437,7 +439,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             });
           }
           case 'health_snapshot':
-            return await handleHealthSnapshot(runtime, args, {
+            return await handleHealthSnapshot(runtime, providerRegistry, args, {
               debugMode: DEBUG_MODE,
               telemetryEnabled: telemetry.isEnabled(),
             });

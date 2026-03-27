@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import { createSeoProviderRegistry } from '../src/providers/index.js';
 import { RuntimeCoordinator } from '../src/utils/runtime.js';
 import { handleHealthSnapshot } from '../src/tools/operations.js';
 import { redactSensitiveData } from '../src/utils/redaction.js';
@@ -8,10 +9,12 @@ import { TelemetryRecorder, type TelemetrySink } from '../src/utils/telemetry.js
 describe('Phase 6 observability utilities', () => {
   it('health_snapshot handler can omit tool metrics', async () => {
     const runtime = new RuntimeCoordinator({ persistencePath: null });
+    const providers = createSeoProviderRegistry();
     runtime.recordToolExecution('search_analytics', 'success', 10);
 
     const result = await handleHealthSnapshot(
       runtime,
+      providers,
       { includeToolMetrics: false },
       { debugMode: true, telemetryEnabled: true },
     );
@@ -20,6 +23,17 @@ describe('Phase 6 observability utilities', () => {
     expect(payload.toolMetrics).toBeUndefined();
     expect((payload.summary as Record<string, unknown>).toolMetricsIncluded).toBe(false);
     expect((payload.observability as Record<string, unknown>).debugMode).toBe(true);
+    expect(payload.providers).toEqual({
+      totalProviders: 0,
+      configuredProviders: 0,
+      capabilities: {
+        backlinks: [],
+        keywordDifficulty: [],
+        competitorOverlap: [],
+        trafficEstimate: [],
+      },
+      providers: [],
+    });
     expect(payload.persistence).toEqual({
       enabled: false,
       path: null,
