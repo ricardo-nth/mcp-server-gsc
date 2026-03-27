@@ -99,6 +99,7 @@ interface WorkflowMonthlyMetric {
   previous: number;
   delta: number;
   deltaPct: number | null;
+  deltaPctContext: 'standard' | 'from_zero' | 'no_prior_baseline';
   direction: 'up' | 'down' | 'flat';
   format: 'number' | 'percent';
 }
@@ -294,24 +295,34 @@ function addDays(value: string, days: number): string {
 }
 
 function getPreviousDateRange(startDate: string, endDate: string): { startDate: string; endDate: string } {
-  const start = parseIsoDate(startDate);
-  const end = parseIsoDate(endDate);
-  const spanDays = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+  const spanDays = getDateRangeSpanDays(startDate, endDate);
   return {
     startDate: addDays(startDate, -spanDays),
     endDate: addDays(startDate, -1),
   };
 }
 
+function getDateRangeSpanDays(startDate: string, endDate: string): number {
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1);
+}
+
 function round(value: number, digits = 2): number {
   return Number(value.toFixed(digits));
 }
 
-function pctChange(current: number, previous: number): number | null {
+function getPctChangeMetadata(current: number, previous: number): Pick<WorkflowMonthlyMetric, 'deltaPct' | 'deltaPctContext'> {
   if (previous === 0) {
-    return current > 0 ? Infinity : null;
+    return {
+      deltaPct: null,
+      deltaPctContext: current > 0 ? 'from_zero' : 'no_prior_baseline',
+    };
   }
-  return round(((current - previous) / previous) * 100);
+  return {
+    deltaPct: round(((current - previous) / previous) * 100),
+    deltaPctContext: 'standard',
+  };
 }
 
 function getDirection(delta: number): 'up' | 'down' | 'flat' {
@@ -346,14 +357,18 @@ function createMetric(
   current: number,
   previous: number,
 ): WorkflowMonthlyMetric {
-  const delta = round(current - previous, format === 'percent' ? 2 : 0);
+  const rawDelta = current - previous;
+  const deltaPrecision = format === 'percent' ? 2 : label === 'Average Position' ? 1 : 0;
+  const delta = round(rawDelta, deltaPrecision);
+  const { deltaPct, deltaPctContext } = getPctChangeMetadata(current, previous);
   return {
     label,
     current,
     previous,
     delta,
-    deltaPct: pctChange(current, previous),
-    direction: getDirection(delta),
+    deltaPct,
+    deltaPctContext,
+    direction: getDirection(rawDelta),
     format,
   };
 }
@@ -425,9 +440,9 @@ function describeMonthlyMetric(metric: WorkflowMonthlyMetric): string {
     return `Average Position ${metric.direction === 'down' ? 'improved' : 'softened'} to ${metric.current.toFixed(1)} (${formatMonthlyDelta(metric)}).`;
   }
   const deltaText =
-    metric.deltaPct === Infinity
+    metric.deltaPctContext === 'from_zero'
       ? 'from zero'
-      : metric.deltaPct === null
+      : metric.deltaPctContext === 'no_prior_baseline' || metric.deltaPct === null
         ? 'with no prior baseline'
         : `${metric.deltaPct > 0 ? '+' : ''}${metric.deltaPct}% vs previous period`;
   return `${metric.label} ${metric.direction === 'flat' ? 'held steady' : metric.direction === 'up' ? 'moved up' : 'moved down'} to ${metric.current}${metric.format === 'percent' ? '%' : ''} ${deltaText}`.trim();
@@ -457,6 +472,53 @@ function getStepSummary(step: WorkflowStepResult): string {
   return 'Workflow step completed successfully.';
 }
 
+function buildMonthlyAnalystAppendix(report: WorkflowReport): WorkflowMonthlyAppendix {
+  return {
+    clientSummary: report.audience.clientSummary,
+    ...(report.audience.analystSummary ? { analystSummary: report.audience.analystSummary } : {}),
+    issues: report.issues,
+    actions: report.actions,
+    steps: report.sections.drilldown.map((step) => ({
+      step: step.step,
+      status: step.status,
+      summary: getStepSummary(step),
+    })),
+  };
+}
+
+function buildMonthlySeoFallbackSection(
+  report: WorkflowReport,
+  note: string,
+): WorkflowMonthlyReportSection {
+  const currentRange = report.site.dateRange;
+  const previousRange = getPreviousDateRange(currentRange.startDate, currentRange.endDate);
+
+  return {
+    comparison: {
+      current: currentRange,
+      previous: previousRange,
+    },
+    kpiSummary: [],
+    narrative: [],
+    visibilityWins: {
+      queries: [],
+      pages: [],
+    },
+    popularSearches: {
+      topQueries: [],
+      risingQueries: [],
+    },
+    topPages: {
+      topPages: [],
+      improvingPages: [],
+    },
+    brandPerformance: [],
+    nextMonthPriorities: [],
+    analystAppendix: buildMonthlyAnalystAppendix(report),
+    note,
+  };
+}
+
 async function buildMonthlySeoReportSection(
   service: SearchConsoleService,
   args: WorkflowArgs,
@@ -466,6 +528,10 @@ async function buildMonthlySeoReportSection(
   const currentRange = report.site.dateRange;
   const previousRange = getPreviousDateRange(currentRange.startDate, currentRange.endDate);
   const rowLimit = Math.max(args.rowLimit, 50);
+  const dailyRowLimit = Math.max(
+    getDateRangeSpanDays(currentRange.startDate, currentRange.endDate),
+    getDateRangeSpanDays(previousRange.startDate, previousRange.endDate),
+  );
 
   const [
     currentDaily,
@@ -475,8 +541,8 @@ async function buildMonthlySeoReportSection(
     currentPages,
     previousPages,
   ] = await Promise.all([
-    fetchSearchRows(service, args.siteUrl, currentRange.startDate, currentRange.endDate, ['date'], 120),
-    fetchSearchRows(service, args.siteUrl, previousRange.startDate, previousRange.endDate, ['date'], 120),
+    fetchSearchRows(service, args.siteUrl, currentRange.startDate, currentRange.endDate, ['date'], dailyRowLimit),
+    fetchSearchRows(service, args.siteUrl, previousRange.startDate, previousRange.endDate, ['date'], dailyRowLimit),
     fetchSearchRows(service, args.siteUrl, currentRange.startDate, currentRange.endDate, ['query'], rowLimit),
     fetchSearchRows(service, args.siteUrl, previousRange.startDate, previousRange.endDate, ['query'], rowLimit),
     fetchSearchRows(service, args.siteUrl, currentRange.startDate, currentRange.endDate, ['page'], rowLimit),
@@ -564,38 +630,41 @@ async function buildMonthlySeoReportSection(
       : []),
   ].slice(0, 5);
 
-  const brandPerformance: WorkflowMonthlyBrandSegment[] = (['branded', 'non_branded'] as const).map((segment) => {
-    const currentSegmentRows = queryRows.filter((row) => row.brandSegment === segment);
-    const previousSegmentRows = currentSegmentRows.map((row) => ({
-      clicks: row.previousClicks,
-      impressions: row.previousImpressions,
-      ctr: row.previousImpressions > 0 ? row.previousClicks / row.previousImpressions : 0,
-      position: row.previousPosition,
-      keys: [row.label],
-    })) as SearchAnalyticsRow[];
-    const currentSegmentTotals = aggregateRows(
-      currentSegmentRows.map((row) => ({
-        clicks: row.currentClicks,
-        impressions: row.currentImpressions,
-        ctr: row.currentImpressions > 0 ? row.currentClicks / row.currentImpressions : 0,
-        position: row.currentPosition,
-        keys: [row.label],
-      })) as SearchAnalyticsRow[],
-    );
-    const previousSegmentTotals = aggregateRows(previousSegmentRows);
-    return {
-      segment,
-      currentClicks: currentSegmentTotals.clicks,
-      previousClicks: previousSegmentTotals.clicks,
-      clicksDelta: currentSegmentTotals.clicks - previousSegmentTotals.clicks,
-      currentImpressions: currentSegmentTotals.impressions,
-      previousImpressions: previousSegmentTotals.impressions,
-      impressionsDelta: currentSegmentTotals.impressions - previousSegmentTotals.impressions,
-      currentCtr: currentSegmentTotals.ctr,
-      previousCtr: previousSegmentTotals.ctr,
-      ctrDelta: round(currentSegmentTotals.ctr - previousSegmentTotals.ctr),
-    };
-  });
+  const brandPerformance: WorkflowMonthlyBrandSegment[] =
+    queryRows.length === 0
+      ? []
+      : (['branded', 'non_branded'] as const).map((segment) => {
+          const currentSegmentRows = queryRows.filter((row) => row.brandSegment === segment);
+          const previousSegmentRows = currentSegmentRows.map((row) => ({
+            clicks: row.previousClicks,
+            impressions: row.previousImpressions,
+            ctr: row.previousImpressions > 0 ? row.previousClicks / row.previousImpressions : 0,
+            position: row.previousPosition,
+            keys: [row.label],
+          })) as SearchAnalyticsRow[];
+          const currentSegmentTotals = aggregateRows(
+            currentSegmentRows.map((row) => ({
+              clicks: row.currentClicks,
+              impressions: row.currentImpressions,
+              ctr: row.currentImpressions > 0 ? row.currentClicks / row.currentImpressions : 0,
+              position: row.currentPosition,
+              keys: [row.label],
+            })) as SearchAnalyticsRow[],
+          );
+          const previousSegmentTotals = aggregateRows(previousSegmentRows);
+          return {
+            segment,
+            currentClicks: currentSegmentTotals.clicks,
+            previousClicks: previousSegmentTotals.clicks,
+            clicksDelta: currentSegmentTotals.clicks - previousSegmentTotals.clicks,
+            currentImpressions: currentSegmentTotals.impressions,
+            previousImpressions: previousSegmentTotals.impressions,
+            impressionsDelta: currentSegmentTotals.impressions - previousSegmentTotals.impressions,
+            currentCtr: currentSegmentTotals.ctr,
+            previousCtr: previousSegmentTotals.ctr,
+            ctrDelta: round(currentSegmentTotals.ctr - previousSegmentTotals.ctr),
+          };
+        });
 
   const nextMonthPriorities = report.actions.slice(0, 5).map((action) => ({
     action: action.action,
@@ -641,17 +710,7 @@ async function buildMonthlySeoReportSection(
     },
     brandPerformance,
     nextMonthPriorities,
-    analystAppendix: {
-      clientSummary: report.audience.clientSummary,
-      ...(report.audience.analystSummary ? { analystSummary: report.audience.analystSummary } : {}),
-      issues: report.issues,
-      actions: report.actions,
-      steps: report.sections.drilldown.map((step) => ({
-        step: step.step,
-        status: step.status,
-        summary: getStepSummary(step),
-      })),
-    },
+    analystAppendix: buildMonthlyAnalystAppendix(report),
   };
 }
 
@@ -841,9 +900,9 @@ function formatMonthlyDelta(metric: WorkflowMonthlyMetric): string {
       : metric.delta.toLocaleString('en-US');
   const deltaPrefix = metric.delta > 0 ? '+' : '';
   const pctText =
-    metric.deltaPct === Infinity
+    metric.deltaPctContext === 'from_zero'
       ? 'from zero'
-      : metric.deltaPct === null
+      : metric.deltaPctContext === 'no_prior_baseline' || metric.deltaPct === null
         ? 'no prior baseline'
         : `${metric.deltaPct > 0 ? '+' : ''}${metric.deltaPct}%`;
   return `${deltaPrefix}${deltaValue}${metric.format === 'percent' ? ' pts' : ''} (${pctText})`;
@@ -933,10 +992,20 @@ function buildMonthlySeoMarkdownReport(
   lines.push(`- Report Pack: ${report.meta.reportPack ?? 'none'}`);
   lines.push(`- Brand: ${report.meta.brand?.name ?? 'N/A'}`);
   lines.push('');
+  if (monthly.note) {
+    lines.push('## Report Note');
+    lines.push('');
+    lines.push(`- ${monthly.note}`);
+    lines.push('');
+  }
   lines.push('## KPI Summary');
   lines.push('');
-  for (const metric of monthly.kpiSummary) {
-    lines.push(`- ${metric.label}: ${formatMonthlyMetricValue(metric)} | ${formatMonthlyDelta(metric)}`);
+  if (monthly.kpiSummary.length === 0) {
+    lines.push('- Monthly KPI summary was not available for this run.');
+  } else {
+    for (const metric of monthly.kpiSummary) {
+      lines.push(`- ${metric.label}: ${formatMonthlyMetricValue(metric)} | ${formatMonthlyDelta(metric)}`);
+    }
   }
   lines.push('');
   lines.push('## Month-over-Month Summary');
@@ -1110,17 +1179,28 @@ function buildMonthlySeoHtmlReport(
   const logoMarkup = report.meta.brand?.logoUrl
     ? `<img class="brand-logo" src="${escapeHtml(report.meta.brand.logoUrl)}" alt="${escapeHtml(brandName)} logo" />`
     : '';
-  const kpiCards = monthly.kpiSummary
-    .map(
-      (metric) => `
-        <article class="stat-card">
-          <div class="stat-label">${escapeHtml(metric.label)}</div>
-          <div class="stat-value">${escapeHtml(formatMonthlyMetricValue(metric))}</div>
-          <p class="step-copy">${escapeHtml(formatMonthlyDelta(metric))}</p>
-        </article>
-      `,
-    )
-    .join('');
+  const noteMarkup = monthly.note
+    ? `
+      <section class="section summary-list">
+        <h2>Report Note</h2>
+        ${buildListItems([monthly.note])}
+      </section>
+    `
+    : '';
+  const kpiCards =
+    monthly.kpiSummary.length > 0
+      ? monthly.kpiSummary
+          .map(
+            (metric) => `
+              <article class="stat-card">
+                <div class="stat-label">${escapeHtml(metric.label)}</div>
+                <div class="stat-value">${escapeHtml(formatMonthlyMetricValue(metric))}</div>
+                <p class="step-copy">${escapeHtml(formatMonthlyDelta(metric))}</p>
+              </article>
+            `,
+          )
+          .join('')
+      : '<p class="empty-state">Monthly KPI summary was not available for this run.</p>';
   const narrativeItems = monthly.narrative.length > 0 ? monthly.narrative.map((item) => item.text) : ['No month-over-month commentary available for this period.'];
   const brandCards =
     monthly.brandPerformance.length > 0
@@ -1389,6 +1469,8 @@ function buildMonthlySeoHtmlReport(
           <p class="hero-copy">${escapeHtml(report.pack.summary)}</p>
         </div>
       </section>
+
+      ${noteMarkup}
 
       <section class="section">
         <h2>KPI Summary</h2>
@@ -2018,10 +2100,19 @@ export async function handleRunSeoAuditWorkflow(
     sections: payload.sections,
   };
 
-  if (args.reportPack === 'monthly_seo' && args.profile === 'content') {
+  if (args.reportPack === 'monthly_seo' && args.profile !== 'content') {
+    report.sections.monthlySeo = buildMonthlySeoFallbackSection(
+      report,
+      'The monthly SEO client report is only available for the content profile.',
+    );
+  } else if (args.reportPack === 'monthly_seo' && args.profile === 'content') {
     try {
       report.sections.monthlySeo = await buildMonthlySeoReportSection(service, args, report, steps);
     } catch (error) {
+      report.sections.monthlySeo = buildMonthlySeoFallbackSection(
+        report,
+        'Monthly performance comparison could not be generated for this run. The workflow appendix is included below for follow-up.',
+      );
       if (args.detailMode !== 'client') {
         report.audience.analystSummary = [
           ...(report.audience.analystSummary ?? []),

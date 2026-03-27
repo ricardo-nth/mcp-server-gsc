@@ -157,6 +157,9 @@ describe('run_seo_audit_workflow', () => {
       }
 
       if (dimensions.join(',') === 'page') {
+        // `detect_content_decay` splits the explicit range into recent/prior halves, so the page
+        // mock needs to treat February as the "recent" branch for that step even though the
+        // monthly report enrichment later fetches current-period page rows from March.
         return startDate === '2026-02-01'
           ? {
               data: {
@@ -206,6 +209,9 @@ describe('run_seo_audit_workflow', () => {
     const payload = parseResult(result);
     const report = payload.report as Record<string, unknown>;
     const monthlySeo = (report.sections as Record<string, unknown>).monthlySeo as Record<string, unknown>;
+    const kpiSummary = monthlySeo.kpiSummary as Array<Record<string, unknown>>;
+    const requestBodies = searchAnalytics.mock.calls.map(([, body]) => body as Record<string, unknown>);
+    const dateBodies = requestBodies.filter((body) => Array.isArray(body.dimensions) && body.dimensions.join(',') === 'date');
 
     expect(report.pack).toEqual(
       expect.objectContaining({
@@ -215,10 +221,33 @@ describe('run_seo_audit_workflow', () => {
         primaryAudience: 'client',
       }),
     );
-    expect(monthlySeo.kpiSummary).toEqual(expect.any(Array));
+    expect(kpiSummary).toEqual(expect.any(Array));
+    expect(kpiSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Average Position',
+          delta: -1.5,
+          direction: 'down',
+        }),
+      ]),
+    );
     expect(monthlySeo.popularSearches).toEqual(expect.objectContaining({ topQueries: expect.any(Array) }));
     expect(monthlySeo.topPages).toEqual(expect.objectContaining({ topPages: expect.any(Array) }));
     expect(monthlySeo.brandPerformance).toEqual(expect.any(Array));
+    expect(dateBodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          startDate: '2026-03-01',
+          endDate: '2026-03-28',
+          rowLimit: 28,
+        }),
+        expect.objectContaining({
+          startDate: '2026-02-01',
+          endDate: '2026-02-28',
+          rowLimit: 28,
+        }),
+      ]),
+    );
     expect(String(payload.markdownReport)).toContain('## KPI Summary');
     expect(String(payload.markdownReport)).toContain('## Popular Searches');
     expect(String(payload.markdownReport)).toContain('## Brand vs Non-Brand Performance');
@@ -257,9 +286,53 @@ describe('run_seo_audit_workflow', () => {
     const monthlySeo = (report.sections as Record<string, unknown>).monthlySeo as Record<string, unknown>;
 
     expect(monthlySeo.kpiSummary).toEqual(expect.any(Array));
+    expect(monthlySeo.brandPerformance).toEqual([]);
     expect(String(payload.markdownReport)).toContain('No notable movement in this section for the selected period.');
     expect(String(payload.htmlReport)).toContain('No notable movement in this section for the selected period.');
     expect(String(payload.htmlReport)).toContain('Analyst Appendix');
+  });
+
+  it('keeps the monthly renderer active when monthly enrichment fails in client mode', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockImplementation((_, body: { dimensions?: string[] }) => {
+        if (body.dimensions?.join(',') === 'date') {
+          return Promise.reject(new Error('month data offline'));
+        }
+        return Promise.resolve({
+          data: { rows: [] },
+        });
+      }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      profile: 'content',
+      reportPack: 'monthly_seo',
+      reportFormat: 'all',
+      detailMode: 'client',
+    });
+
+    const payload = parseResult(result);
+    const report = payload.report as Record<string, unknown>;
+    const monthlySeo = (report.sections as Record<string, unknown>).monthlySeo as Record<string, unknown>;
+
+    expect(monthlySeo.note).toBe(
+      'Monthly performance comparison could not be generated for this run. The workflow appendix is included below for follow-up.',
+    );
+    expect(String(payload.markdownReport)).toContain('## Report Note');
+    expect(String(payload.markdownReport)).toContain('## KPI Summary');
+    expect(String(payload.markdownReport)).not.toContain('## Executive Summary');
+    expect(String(payload.htmlReport)).toContain('Report Note');
+    expect(String(payload.htmlReport)).toContain('Monthly KPI summary was not available for this run.');
+    expect(String(payload.htmlReport)).not.toContain('month data offline');
+    expect(payload.analystSummary).toBeUndefined();
   });
 
   it('returns htmlReport only when reportFormat=html', async () => {
