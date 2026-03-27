@@ -200,13 +200,15 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     name: 'run_seo_audit_workflow',
     group: 'core',
     description:
-      'Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, drilldowns, and optional markdown report.',
+      'Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, drilldowns, a shared report contract, and optional markdown report output.',
     schema: RunSeoAuditWorkflowSchema,
     example: {
       siteUrl: 'sc-domain:example.com',
       days: 28,
       profile: 'technical',
-      markdown: true,
+      reportFormat: 'markdown',
+      detailMode: 'client',
+      reportPack: 'technical_audit',
     },
   },
   {

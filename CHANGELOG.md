@@ -6,6 +6,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+### Added
+
+- Additive workflow report contract groundwork for `run_seo_audit_workflow`, including `reportFormat`, `reportPack`, `detailMode`, optional brand metadata, and a shared `report` payload alongside the existing workflow sections.
+
 ### Planned
 
 - Client-ready HTML report rendering for SEO workflows, with branded templates that can be exported to PDF deliverables.

@@ -11,11 +11,44 @@ import {
   handleDropAlerts,
 } from './computed2.js';
 
+type WorkflowArgs = ReturnType<typeof RunSeoAuditWorkflowSchema.parse>;
+type WorkflowReportFormat = NonNullable<WorkflowArgs['reportFormat']> | 'json';
+type WorkflowDetailMode = WorkflowArgs['detailMode'];
+type WorkflowReportPack = WorkflowArgs['reportPack'];
+type WorkflowBrand = WorkflowArgs['brand'];
+
 interface WorkflowStepResult {
   step: string;
   status: 'success' | 'error';
   data?: unknown;
   error?: string;
+}
+
+interface WorkflowExecutiveSummary {
+  overallStatus: 'healthy' | 'partial' | 'failed';
+  stepsSucceeded: number;
+  stepsFailed: number;
+  keyActions: string[];
+}
+
+interface WorkflowReport {
+  meta: {
+    title: string;
+    generatedAt: string;
+    format: WorkflowReportFormat;
+    detailMode: WorkflowDetailMode;
+    reportPack: WorkflowReportPack | null;
+    brand: WorkflowBrand | null;
+  };
+  site: {
+    siteUrl: string;
+    profile: WorkflowArgs['profile'];
+    dateRange: { startDate: string; endDate: string };
+  };
+  executiveSummary: WorkflowExecutiveSummary;
+  sections: {
+    drilldown: WorkflowStepResult[];
+  };
 }
 
 function unwrapResult(result: ToolResult): unknown {
@@ -43,31 +76,49 @@ async function runStep(step: string, operation: () => Promise<ToolResult>): Prom
   }
 }
 
-function buildMarkdownReport(payload: {
-  profile: string;
-  siteUrl: string;
-  dateRange: { startDate: string; endDate: string };
-  executiveSummary: Record<string, unknown>;
-  steps: WorkflowStepResult[];
-}): string {
+function getReportTitle(profile: WorkflowArgs['profile'], reportPack?: WorkflowReportPack): string {
+  if (reportPack === 'monthly_seo') return 'Monthly SEO Workflow Report';
+  if (reportPack === 'technical_audit') return 'Technical SEO Workflow Report';
+  if (reportPack === 'indexing_recovery') return 'Indexing Recovery Workflow Report';
+  if (reportPack === 'content_opportunities') return 'Content Opportunity Workflow Report';
+  if (profile === 'technical') return 'Technical SEO Workflow Report';
+  if (profile === 'content') return 'Content Performance Workflow Report';
+  return 'Indexing Recovery Workflow Report';
+}
+
+function resolveReportFormat(args: WorkflowArgs): WorkflowReportFormat {
+  return args.reportFormat ?? (args.markdown ? 'markdown' : 'json');
+}
+
+function buildMarkdownReport(report: WorkflowReport): string {
   const lines: string[] = [];
-  lines.push(`# SEO Audit Workflow — ${payload.profile}`);
+  lines.push(`# ${report.meta.title}`);
   lines.push('');
-  lines.push(`- Site: ${payload.siteUrl}`);
-  lines.push(`- Date Range: ${payload.dateRange.startDate} to ${payload.dateRange.endDate}`);
-  lines.push(`- Steps Run: ${payload.steps.length}`);
-  lines.push(`- Steps Succeeded: ${payload.executiveSummary.stepsSucceeded as number}`);
-  lines.push(`- Steps Failed: ${payload.executiveSummary.stepsFailed as number}`);
+  lines.push(`- Site: ${report.site.siteUrl}`);
+  lines.push(`- Profile: ${report.site.profile}`);
+  lines.push(`- Date Range: ${report.site.dateRange.startDate} to ${report.site.dateRange.endDate}`);
+  lines.push(`- Detail Mode: ${report.meta.detailMode}`);
+  if (report.meta.reportPack) {
+    lines.push(`- Report Pack: ${report.meta.reportPack}`);
+  }
+  if (report.meta.brand?.name) {
+    lines.push(`- Brand: ${report.meta.brand.name}`);
+  }
+  lines.push(`- Steps Run: ${report.sections.drilldown.length}`);
+  lines.push(`- Steps Succeeded: ${report.executiveSummary.stepsSucceeded}`);
+  lines.push(`- Steps Failed: ${report.executiveSummary.stepsFailed}`);
   lines.push('');
   lines.push('## Executive Summary');
   lines.push('');
-  lines.push(`- Status: ${(payload.executiveSummary.overallStatus as string)}`);
-  lines.push(`- Key Actions: ${(payload.executiveSummary.keyActions as string[]).join('; ')}`);
+  lines.push(`- Status: ${report.executiveSummary.overallStatus}`);
+  lines.push(
+    `- Key Actions: ${report.executiveSummary.keyActions.join('; ') || 'No immediate actions identified.'}`,
+  );
   lines.push('');
   lines.push('## Step Results');
   lines.push('');
 
-  for (const step of payload.steps) {
+  for (const step of report.sections.drilldown) {
     lines.push(`### ${step.step}`);
     lines.push(`- Status: ${step.status}`);
     if (step.status === 'error') {
@@ -88,6 +139,7 @@ export async function handleRunSeoAuditWorkflow(
 ): Promise<ToolResult> {
   const args = RunSeoAuditWorkflowSchema.parse(raw);
   const { startDate, endDate } = resolveDateRange(args);
+  const reportFormat = resolveReportFormat(args);
 
   const sampleUrl = args.sampleUrl ?? args.urls?.[0] ?? undefined;
   const steps: WorkflowStepResult[] = [];
@@ -233,20 +285,43 @@ export async function handleRunSeoAuditWorkflow(
     profile: args.profile,
     siteUrl: args.siteUrl,
     dateRange: { startDate, endDate },
+    reportFormat,
+    reportPack: args.reportPack ?? null,
+    detailMode: args.detailMode,
+    brand: args.brand ?? null,
     executiveSummary: {
       overallStatus: failed.length === 0 ? 'healthy' : successful.length > 0 ? 'partial' : 'failed',
       stepsSucceeded: successful.length,
       stepsFailed: failed.length,
       keyActions,
-    },
+    } satisfies WorkflowExecutiveSummary,
     sections: {
       drilldown: steps,
     },
     steps,
   };
 
+  const report: WorkflowReport = {
+    meta: {
+      title: getReportTitle(args.profile, args.reportPack),
+      generatedAt: new Date().toISOString(),
+      format: reportFormat,
+      detailMode: args.detailMode,
+      reportPack: args.reportPack ?? null,
+      brand: args.brand ?? null,
+    },
+    site: {
+      siteUrl: args.siteUrl,
+      profile: args.profile,
+      dateRange: { startDate, endDate },
+    },
+    executiveSummary: payload.executiveSummary,
+    sections: payload.sections,
+  };
+
   return jsonResult({
     ...payload,
-    ...(args.markdown ? { markdownReport: buildMarkdownReport(payload) } : {}),
+    report,
+    ...(reportFormat === 'markdown' ? { markdownReport: buildMarkdownReport(report) } : {}),
   });
 }

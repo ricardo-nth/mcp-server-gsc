@@ -299,17 +299,45 @@ describe('Phase 4 schema extensions', () => {
 });
 
 describe('RunSeoAuditWorkflowSchema', () => {
-  it('supports profile defaults and markdown flag', () => {
+  it('supports workflow report controls with sane defaults', () => {
     const result = RunSeoAuditWorkflowSchema.parse({
       siteUrl: 'sc-domain:example.com',
       days: 28,
       markdown: true,
+      reportPack: 'technical_audit',
+      detailMode: 'both',
+      brand: {
+        name: 'Nth Agency',
+        logoUrl: 'https://example.com/logo.png',
+        accentColor: '#0F172A',
+      },
     });
 
     expect(result.profile).toBe('technical');
     expect(result.topN).toBe(25);
     expect(result.rowLimit).toBe(1000);
     expect(result.markdown).toBe(true);
+    expect(result.reportFormat).toBeUndefined();
+    expect(result.reportPack).toBe('technical_audit');
+    expect(result.detailMode).toBe('both');
+    expect(result.brand).toEqual({
+      name: 'Nth Agency',
+      logoUrl: 'https://example.com/logo.png',
+      accentColor: '#0F172A',
+    });
+  });
+
+  it('rejects invalid brand colors', () => {
+    expect(() =>
+      RunSeoAuditWorkflowSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        days: 28,
+        brand: {
+          name: 'Nth Agency',
+          accentColor: 'navy',
+        },
+      }),
+    ).toThrow(/accentColor/);
   });
 });
 
