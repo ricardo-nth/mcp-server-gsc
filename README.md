@@ -136,7 +136,7 @@ With global exports, your `.mcp.json` simplifies to:
 
 | Tool | Description |
 |------|-------------|
-| `health_snapshot` | Runtime diagnostics snapshot for operations: cache/idempotency state, concurrency queues, quota guardrails, and per-tool success/failure counters. |
+| `health_snapshot` | Runtime diagnostics snapshot for operations: cache/idempotency state, concurrency queues, quota guardrails, provider registry status, and per-tool success/failure counters. |
 
 ### Computed Intelligence (7 tools)
 

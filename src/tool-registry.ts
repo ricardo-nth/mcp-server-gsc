@@ -114,7 +114,7 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     name: 'health_snapshot',
     group: 'operations',
     description:
-      'Runtime diagnostics snapshot for operations: cache/idempotency state, concurrency queues, quota guardrails, and per-tool success/failure counters.',
+      'Runtime diagnostics snapshot for operations: cache/idempotency state, concurrency queues, quota guardrails, provider registry status, and per-tool success/failure counters.',
     schema: HealthSnapshotSchema,
     example: {
       includeToolMetrics: true,
