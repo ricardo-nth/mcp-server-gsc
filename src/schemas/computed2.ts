@@ -122,6 +122,11 @@ export const CannibalizationResolverSchema = SiteUrlSchema.merge(DateRangeSchema
     .optional()
     .default(true)
     .describe('Whether to include winner/action recommendations (default true)'),
+  brandTerms: z
+    .array(z.string().min(2))
+    .max(10)
+    .optional()
+    .describe('Optional explicit brand terms used for branded vs non-branded cannibalization segmentation.'),
 });
 
 /** drop_alerts tool schema — uses own `days` field, not DateRangeSchema,

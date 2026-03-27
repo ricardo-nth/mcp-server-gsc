@@ -355,7 +355,7 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     name: 'cannibalization_resolver',
     group: 'multiApi',
     description:
-      'Detect keyword cannibalization AND recommend actions: identifies the winner URL per query and suggests redirect, consolidate, or differentiate for competing pages based on traffic distribution.',
+      'Detect keyword cannibalization AND recommend actions: identifies the winner URL per query and adds intent, brand/template context, severity, and stronger redirect/consolidate/differentiate guidance.',
     schema: CannibalizationResolverSchema,
   },
   {

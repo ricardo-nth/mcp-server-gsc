@@ -213,6 +213,15 @@ describe('CannibalizationResolverSchema', () => {
     });
     expect(result.minImpressions).toBe(100);
   });
+
+  it('accepts explicit brand terms for cannibalization segmentation', () => {
+    const result = CannibalizationResolverSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 14,
+      brandTerms: ['nth'],
+    });
+    expect(result.brandTerms).toEqual(['nth']);
+  });
 });
 
 describe('DropAlertsSchema', () => {
