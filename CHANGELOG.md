@@ -15,6 +15,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Internal provider abstraction and registry foundations for backlinks, keyword difficulty, competitor overlap, and traffic estimate integrations, with additive `health_snapshot` provider diagnostics.
 - Ahrefs scaffold provider registered by default in scaffold mode, backed by deterministic fixtures so provider contracts and operations diagnostics are testable before live API wiring.
 - Expanded `recommend_next_actions` with branded vs non-branded opportunity segmentation, derived brand-term detection, and page template grouping for stronger native SEO prioritization.
+- Upgraded `cannibalization_resolver` with branded segmentation, intent/cluster/template context, severity scoring, and stronger action metadata for redirect/consolidate/differentiate recommendations.
 
 ### Planned
 

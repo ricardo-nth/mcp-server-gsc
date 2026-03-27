@@ -13,7 +13,14 @@ import {
   splitExplicitDateRange,
 } from '../utils/dates.js';
 import { rateLimited } from '../utils/retry.js';
-import { detectChangePoints, detectPageTemplate } from '../utils/seo-analysis.js';
+import {
+  clusterQuery,
+  deriveBrandTerms,
+  detectBrandSegment,
+  detectChangePoints,
+  detectPageTemplate,
+  labelQueryIntent,
+} from '../utils/seo-analysis.js';
 import { jsonResult, type ToolResult, type SearchAnalyticsRow } from '../utils/types.js';
 
 function parseSitemapLocs(xml: string): string[] {
@@ -476,6 +483,7 @@ export async function handleCannibalizationResolver(
 ): Promise<ToolResult> {
   const args = CannibalizationResolverSchema.parse(raw);
   const { startDate, endDate } = resolveDateRange(args);
+  const brandTerms = deriveBrandTerms(args.siteUrl, args.brandTerms);
 
   const response = await service.searchAnalytics(args.siteUrl, {
     startDate,
@@ -533,6 +541,11 @@ export async function handleCannibalizationResolver(
 
       const winner = sorted[0];
       const losers = sorted.slice(1);
+      const intent = labelQueryIntent(query);
+      const cluster = clusterQuery(query);
+      const brandSegment = detectBrandSegment(query, brandTerms);
+      const severity =
+        totalImpressions >= 1000 || variance >= 4 ? 'high' : totalImpressions >= 300 ? 'medium' : 'low';
 
       let recommendation: Record<string, unknown> | undefined;
       if (args.includeRecommendation) {
@@ -540,6 +553,8 @@ export async function handleCannibalizationResolver(
           winnerUrl: winner.page,
           winnerClicks: winner.clicks,
           winnerPosition: Number(winner.position.toFixed(1)),
+          winnerTemplate: detectPageTemplate(winner.page),
+          severity,
           actions: losers.map((loser) => {
             const clickRatio =
               winner.clicks > 0 ? loser.clicks / winner.clicks : 0;
@@ -554,11 +569,18 @@ export async function handleCannibalizationResolver(
               action = 'differentiate';
             }
 
+            const owner = action === 'differentiate' ? 'content' : 'seo_analyst';
+            const impact = severity === 'high' ? 'high' : action === 'differentiate' ? 'medium' : 'high';
+
             return {
               url: loser.page,
               clicks: loser.clicks,
               position: Number(loser.position.toFixed(1)),
+              template: detectPageTemplate(loser.page),
               action,
+              owner,
+              impact,
+              actionPriority: severity === 'high' ? 'now' : severity === 'medium' ? 'next' : 'later',
               rationale:
                 action === 'redirect'
                   ? `Low traffic (${loser.clicks} clicks) and poor position (${loser.position.toFixed(1)}). 301 redirect to winner.`
@@ -572,13 +594,19 @@ export async function handleCannibalizationResolver(
 
       return {
         query,
+        intent,
+        cluster,
+        brandSegment,
         pageCount: pages.length,
         totalImpressions,
+        severity,
         positionVariance: Number(variance.toFixed(2)),
+        templates: Array.from(new Set(sorted.map((page) => detectPageTemplate(page.page)))).sort(),
         pages: sorted.map((p) => ({
           ...p,
           ctr: Number(p.ctr.toFixed(2)),
           position: Number(p.position.toFixed(1)),
+          template: detectPageTemplate(p.page),
         })),
         ...(recommendation ? { recommendation } : {}),
       };
@@ -586,9 +614,28 @@ export async function handleCannibalizationResolver(
     .filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => b.totalImpressions - a.totalImpressions);
 
+  const segmentationSummary = Array.from(
+    resolved.reduce<Map<string, { segment: string; queries: number; totalImpressions: number }>>(
+      (acc, item) => {
+        const current = acc.get(item.brandSegment) ?? {
+          segment: item.brandSegment,
+          queries: 0,
+          totalImpressions: 0,
+        };
+        current.queries += 1;
+        current.totalImpressions += item.totalImpressions;
+        acc.set(item.brandSegment, current);
+        return acc;
+      },
+      new Map(),
+    ).values(),
+  ).sort((a, b) => b.totalImpressions - a.totalImpressions);
+
   return jsonResult({
     siteUrl: args.siteUrl,
     dateRange: { startDate, endDate },
+    brandTermsUsed: brandTerms,
+    segmentationSummary,
     cannibalizationIssues: resolved.length,
     queries: resolved,
   });

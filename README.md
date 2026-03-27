@@ -161,7 +161,7 @@ Tools that combine data from multiple Google APIs in a single call, using `Promi
 | `page_health_dashboard` | Comprehensive page health check combining URL Inspection (indexing status, canonical), Search Analytics (clicks, impressions, CTR, position), PageSpeed Insights (Lighthouse scores), and CrUX (real-user Core Web Vitals) in a single call. CrUX is optional (requires GOOGLE_CLOUD_API_KEY). |
 | `indexing_health_report` | Batch-check indexing status across site pages. Gets top URLs from search analytics, rate-limited inspects each (1 req/sec), and aggregates: indexed count, not-indexed count, errors, by coverage state. Max 100 URLs per call. Reports quotaUsed for tracking against 2000/day limit. |
 | `serp_feature_tracking` | Track SERP features (rich results, FAQs, videos, AMP, etc.) over time using the searchAppearance dimension. Shows daily trends per feature type. |
-| `cannibalization_resolver` | Detect keyword cannibalization AND recommend actions: identifies the winner URL per query and suggests redirect, consolidate, or differentiate for competing pages based on traffic distribution. |
+| `cannibalization_resolver` | Detect keyword cannibalization AND recommend actions: identifies the winner URL per query and adds intent, brand/template context, severity, and stronger redirect/consolidate/differentiate guidance. |
 | `drop_alerts` | Detect pages with significant traffic drops by comparing recent vs previous period. Flags pages exceeding a configurable % threshold (default 50%), sorted by absolute click loss. |
 
 ### Adjacent APIs (9 tools)
@@ -330,7 +330,7 @@ Generated from the runtime tool registry.
 
 **Cursor retrieval** — `search_analytics_cursor` returns one page plus `pageInfo.nextCursor` so agents can stream large result sets in deterministic chunks instead of one giant payload.
 
-**Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters. `recommend_next_actions` now also returns branded vs non-branded segmentation and page template grouping, with optional `brandTerms` override input.
+**Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters. `recommend_next_actions` now also returns branded vs non-branded segmentation and page template grouping, with optional `brandTerms` override input. `cannibalization_resolver` adds the same brand-term override path plus stronger severity, owner, and action-priority guidance.
 
 **Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, deterministic `issues` / `actions` handoff data, a shared `report` payload, and optional `markdownReport` / `htmlReport` outputs. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs. Report packs are validated against compatible profiles: `technical_audit` -> `technical`, `indexing_recovery` -> `indexing`, `monthly_seo` / `content_opportunities` -> `content`.
 
