@@ -17,15 +17,6 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Expanded `recommend_next_actions` with branded vs non-branded opportunity segmentation, derived brand-term detection, and page template grouping for stronger native SEO prioritization.
 - Upgraded `cannibalization_resolver` with branded segmentation, intent/cluster/template context, severity scoring, and stronger action metadata for redirect/consolidate/differentiate recommendations.
 
-### Planned
-
-- Client-ready HTML report rendering for SEO workflows, with branded templates that can be exported to PDF deliverables.
-- Report packs for common agency use cases such as monthly SEO updates, technical audits, indexing recovery, and content opportunity reviews.
-- Provider abstractions for external SEO data sources so backlink, keyword difficulty, competitor, and traffic-estimate integrations can plug in cleanly later.
-- Ahrefs-ready integration scaffolding built against provider interfaces and test fixtures, so the implementation can land cleanly once API access is available.
-- Stronger professional workflow outputs including issue severity, impact/effort scoring, action ownership, analyst detail mode, and client-safe summaries.
-- Expanded native SEO intelligence on top of Search Console data, including branded vs non-branded segmentation, intent clustering, template grouping, anomaly detection, and stronger cannibalization/action recommendations.
-
 ## [1.2.3] - 2026-03-26
 
 ### Added
