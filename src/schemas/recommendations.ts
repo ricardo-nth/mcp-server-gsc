@@ -40,6 +40,11 @@ export const RecommendNextActionsSchema = SiteUrlSchema.merge(DateRangeSchema).e
     .optional()
     .default(true)
     .describe('When true, include PageSpeed performance signal in scoring.'),
+  brandTerms: z
+    .array(z.string().min(2))
+    .max(10)
+    .optional()
+    .describe('Optional explicit brand terms used for branded vs non-branded opportunity segmentation.'),
 });
 
 export type RecommendNextActionsInput = z.infer<typeof RecommendNextActionsSchema>;

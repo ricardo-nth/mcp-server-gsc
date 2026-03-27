@@ -186,13 +186,14 @@ export const TOOL_REGISTRY: ToolRegistryEntry[] = [
     name: 'recommend_next_actions',
     group: 'core',
     description:
-      'Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, and CWV quality.',
+      'Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, CWV quality, branded segmentation, and page template grouping.',
     schema: RecommendNextActionsSchema,
     example: {
       siteUrl: 'sc-domain:example.com',
       days: 28,
       topActions: 5,
       minImpressions: 100,
+      brandTerms: ['example'],
       includeCwv: true,
     },
   },
