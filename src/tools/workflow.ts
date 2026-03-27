@@ -31,6 +31,32 @@ interface WorkflowExecutiveSummary {
   keyActions: string[];
 }
 
+type WorkflowSeverity = 'low' | 'medium' | 'high';
+type WorkflowImpact = 'low' | 'medium' | 'high';
+type WorkflowEffort = 'low' | 'medium' | 'high';
+type WorkflowOwner = 'seo_analyst' | 'seo_engineering' | 'content' | 'web_performance';
+
+interface WorkflowIssue {
+  sourceStep: string;
+  title: string;
+  severity: WorkflowSeverity;
+  impact: WorkflowImpact;
+  effort: WorkflowEffort;
+  owner: WorkflowOwner;
+  clientSummary: string;
+  analystDetail?: string;
+}
+
+interface WorkflowActionItem {
+  sourceStep: string;
+  action: string;
+  impact: WorkflowImpact;
+  effort: WorkflowEffort;
+  owner: WorkflowOwner;
+  clientSummary: string;
+  analystDetail?: string;
+}
+
 interface WorkflowReport {
   meta: {
     title: string;
@@ -53,6 +79,13 @@ interface WorkflowReport {
     dateRange: { startDate: string; endDate: string };
   };
   executiveSummary: WorkflowExecutiveSummary;
+  audience: {
+    detailMode: WorkflowDetailMode;
+    clientSummary: string[];
+    analystSummary?: string[];
+  };
+  issues: WorkflowIssue[];
+  actions: WorkflowActionItem[];
   sections: {
     drilldown: WorkflowStepResult[];
   };
@@ -155,6 +188,137 @@ function getReportPackConfig(
   };
 }
 
+function mapImpact(value: unknown): WorkflowImpact {
+  return value === 'high' || value === 'medium' ? value : 'low';
+}
+
+function summarizeError(error: string): string {
+  if (error.includes('Number must be greater than or equal to 14')) {
+    return 'The requested workflow window was too short for one of the comparison steps.';
+  }
+  return `One workflow step failed: ${error}.`;
+}
+
+function buildProfessionalOutputs(
+  steps: WorkflowStepResult[],
+  detailMode: WorkflowDetailMode,
+): {
+  issues: WorkflowIssue[];
+  actions: WorkflowActionItem[];
+  clientSummary: string[];
+  analystSummary?: string[];
+} {
+  const issues: WorkflowIssue[] = [];
+  const actions: WorkflowActionItem[] = [];
+  const analystSummary: string[] = [];
+
+  for (const step of steps) {
+    const data = (step.data ?? {}) as Record<string, unknown>;
+
+    if (step.status === 'error') {
+      issues.push({
+        sourceStep: step.step,
+        title: `${step.step} needs follow-up`,
+        severity: step.step === 'indexing_health_report' ? 'high' : 'medium',
+        impact: step.step === 'indexing_health_report' ? 'high' : 'medium',
+        effort: 'medium',
+        owner: step.step === 'page_health_dashboard' ? 'web_performance' : 'seo_engineering',
+        clientSummary: summarizeError(step.error ?? 'Unknown workflow error'),
+        ...(detailMode !== 'client' ? { analystDetail: step.error ?? 'Unknown workflow error' } : {}),
+      });
+      analystSummary.push(`${step.step} failed with: ${step.error ?? 'Unknown workflow error'}`);
+      continue;
+    }
+
+    if (typeof data.notIndexed === 'number' && data.notIndexed > 0) {
+      issues.push({
+        sourceStep: step.step,
+        title: `${data.notIndexed} URLs are not indexed`,
+        severity: data.notIndexed >= 10 ? 'high' : 'medium',
+        impact: 'high',
+        effort: 'medium',
+        owner: 'seo_engineering',
+        clientSummary: `${data.notIndexed} URLs need indexing remediation before they can contribute to organic visibility.`,
+        ...(detailMode !== 'client'
+          ? { analystDetail: `Indexing workflow reported ${data.notIndexed} non-indexed URLs.` }
+          : {}),
+      });
+      actions.push({
+        sourceStep: step.step,
+        action: `Prioritize indexing remediation for ${data.notIndexed} URLs`,
+        impact: 'high',
+        effort: 'medium',
+        owner: 'seo_engineering',
+        clientSummary: 'Address the non-indexed URL set first to recover crawl and visibility coverage.',
+        ...(detailMode !== 'client'
+          ? { analystDetail: `Use indexing_health_report drilldown to review coverage states and errors.` }
+          : {}),
+      });
+    }
+
+    if (typeof data.alertCount === 'number' && data.alertCount > 0) {
+      issues.push({
+        sourceStep: step.step,
+        title: `${data.alertCount} traffic drop alerts detected`,
+        severity: data.alertCount >= 5 ? 'high' : 'medium',
+        impact: 'high',
+        effort: 'medium',
+        owner: 'seo_analyst',
+        clientSummary: `${data.alertCount} pages showed meaningful traffic declines and should be reviewed for changes or losses in search demand.`,
+        ...(detailMode !== 'client'
+          ? { analystDetail: `Drop alert threshold triggered for ${data.alertCount} pages.` }
+          : {}),
+      });
+    }
+
+    if (Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+      const recommendations = data.recommendations as Array<Record<string, unknown>>;
+      for (const recommendation of recommendations.slice(0, 3)) {
+        const type = String(recommendation.type ?? '');
+        const owner: WorkflowOwner =
+          type === 'cwv_improvement'
+            ? 'web_performance'
+            : type === 'ctr_optimization'
+              ? 'content'
+              : 'seo_engineering';
+        const effort: WorkflowEffort =
+          type === 'ctr_optimization' ? 'low' : type === 'cwv_improvement' ? 'medium' : 'high';
+        actions.push({
+          sourceStep: step.step,
+          action: String(recommendation.action ?? 'Review recommendation'),
+          impact: mapImpact(recommendation.impact),
+          effort,
+          owner,
+          clientSummary: `Recommended next step: ${String(recommendation.action ?? 'Review recommendation')}.`,
+          ...(detailMode !== 'client'
+            ? {
+                analystDetail: Array.isArray(recommendation.rationale)
+                  ? (recommendation.rationale as string[]).join(' ')
+                  : undefined,
+              }
+            : {}),
+        });
+      }
+    }
+  }
+
+  const clientSummary = [
+    issues.length > 0
+      ? `${issues.length} issue${issues.length === 1 ? '' : 's'} require attention in this workflow handoff.`
+      : 'No critical workflow issues were detected in this handoff.',
+    actions.length > 0
+      ? `${actions.length} prioritized action${actions.length === 1 ? '' : 's'} were generated for follow-up.`
+      : 'No prioritized actions were generated from this run.',
+  ];
+
+  return {
+    issues,
+    actions,
+    clientSummary,
+    ...(detailMode === 'client' ? {} : { analystSummary }),
+  };
+}
+
 function getReportTitle(profile: WorkflowArgs['profile'], reportPack?: WorkflowReportPack): string {
   if (reportPack === 'monthly_seo') return 'Monthly SEO Workflow Report';
   if (reportPack === 'technical_audit') return 'Technical SEO Workflow Report';
@@ -214,6 +378,32 @@ function buildMarkdownReport(report: WorkflowReport): string {
   lines.push(
     `- Key Actions: ${report.executiveSummary.keyActions.join('; ') || 'No immediate actions identified.'}`,
   );
+  lines.push(`- Client Summary: ${report.audience.clientSummary.join(' ')}`);
+  if (report.audience.analystSummary && report.audience.analystSummary.length > 0) {
+    lines.push(`- Analyst Summary: ${report.audience.analystSummary.join(' ')}`);
+  }
+  lines.push('');
+  lines.push('## Actions');
+  lines.push('');
+  for (const action of report.actions.slice(0, 5)) {
+    lines.push(
+      `- ${action.action} [owner=${action.owner}; impact=${action.impact}; effort=${action.effort}]`,
+    );
+  }
+  if (report.actions.length === 0) {
+    lines.push('- No prioritized actions identified.');
+  }
+  lines.push('');
+  lines.push('## Issues');
+  lines.push('');
+  for (const issue of report.issues.slice(0, 5)) {
+    lines.push(
+      `- ${issue.title} [severity=${issue.severity}; impact=${issue.impact}; effort=${issue.effort}; owner=${issue.owner}]`,
+    );
+  }
+  if (report.issues.length === 0) {
+    lines.push('- No issues identified.');
+  }
   lines.push('');
   lines.push('## Step Results');
   lines.push('');
@@ -503,6 +693,16 @@ function buildHtmlReport(report: WorkflowReport): string {
         ${buildListItems(report.executiveSummary.keyActions)}
       </section>
 
+      <section class="section summary-list">
+        <h2>Audience Summary</h2>
+        ${buildListItems(report.audience.clientSummary)}
+        ${
+          report.audience.analystSummary && report.audience.analystSummary.length > 0
+            ? `<h3>Analyst Notes</h3>${buildListItems(report.audience.analystSummary)}`
+            : ''
+        }
+      </section>
+
       <section class="section">
         <h2>Pack Context</h2>
         <div class="stats">
@@ -518,6 +718,52 @@ function buildHtmlReport(report: WorkflowReport): string {
             <div class="stat-label">Primary Audience</div>
             <div class="stat-value">${escapeHtml(report.pack.primaryAudience)}</div>
           </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Prioritized Actions</h2>
+        <div class="step-grid">
+          ${report.actions.length > 0
+            ? report.actions
+                .slice(0, 6)
+                .map(
+                  (action) => `
+                <article class="step-card">
+                  <div class="step-card-head">
+                    <h3>${escapeHtml(action.action)}</h3>
+                    <span class="step-status status-success">${escapeHtml(action.owner)}</span>
+                  </div>
+                  <p class="step-copy">${escapeHtml(action.clientSummary)}</p>
+                  <p class="step-copy">Impact: ${escapeHtml(action.impact)} | Effort: ${escapeHtml(action.effort)}</p>
+                </article>
+              `,
+                )
+                .join('')
+            : '<p class="empty-state">No prioritized actions identified.</p>'}
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Issues</h2>
+        <div class="step-grid">
+          ${report.issues.length > 0
+            ? report.issues
+                .slice(0, 6)
+                .map(
+                  (issue) => `
+                <article class="step-card">
+                  <div class="step-card-head">
+                    <h3>${escapeHtml(issue.title)}</h3>
+                    <span class="step-status status-error">${escapeHtml(issue.severity)}</span>
+                  </div>
+                  <p class="step-copy">${escapeHtml(issue.clientSummary)}</p>
+                  <p class="step-copy">Impact: ${escapeHtml(issue.impact)} | Effort: ${escapeHtml(issue.effort)} | Owner: ${escapeHtml(issue.owner)}</p>
+                </article>
+              `,
+                )
+                .join('')
+            : '<p class="empty-state">No issues identified.</p>'}
         </div>
       </section>
 
@@ -700,6 +946,8 @@ export async function handleRunSeoAuditWorkflow(
     steps,
   };
 
+  const professionalOutputs = buildProfessionalOutputs(steps, args.detailMode);
+
   const report: WorkflowReport = {
     meta: {
       title: getReportTitle(args.profile, args.reportPack),
@@ -716,11 +964,24 @@ export async function handleRunSeoAuditWorkflow(
       dateRange: { startDate, endDate },
     },
     executiveSummary: payload.executiveSummary,
+    audience: {
+      detailMode: args.detailMode,
+      clientSummary: professionalOutputs.clientSummary,
+      ...(professionalOutputs.analystSummary
+        ? { analystSummary: professionalOutputs.analystSummary }
+        : {}),
+    },
+    issues: professionalOutputs.issues,
+    actions: professionalOutputs.actions,
     sections: payload.sections,
   };
 
   return jsonResult({
     ...payload,
+    clientSummary: professionalOutputs.clientSummary,
+    ...(professionalOutputs.analystSummary ? { analystSummary: professionalOutputs.analystSummary } : {}),
+    issues: professionalOutputs.issues,
+    actions: professionalOutputs.actions,
     report,
     ...((reportFormat === 'markdown' || reportFormat === 'all')
       ? { markdownReport: buildMarkdownReport(report) }
