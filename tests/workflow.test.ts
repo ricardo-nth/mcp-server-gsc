@@ -69,12 +69,60 @@ describe('run_seo_audit_workflow', () => {
           siteUrl: 'sc-domain:example.com',
           profile: 'technical',
         }),
+        pack: expect.objectContaining({
+          name: 'technical_audit',
+          headline: 'Technical audit pack',
+          cadence: 'ad_hoc',
+          primaryAudience: 'both',
+        }),
       }),
     );
     expect(String(payload.htmlReport)).toContain('<!DOCTYPE html>');
     expect(String(payload.htmlReport)).toContain('Nth Agency');
     expect(String(payload.htmlReport)).toContain('#0F172A');
+    expect(String(payload.htmlReport)).toContain('Technical audit pack');
     expect((payload.executiveSummary as Record<string, unknown>).stepsSucceeded).toBeGreaterThan(0);
+  });
+
+  it('uses monthly SEO pack context for compatible content workflows', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: { rows: [] },
+        })
+        .mockResolvedValueOnce({
+          data: { rows: [] },
+        })
+        .mockResolvedValueOnce({
+          data: { rows: [] },
+        }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      profile: 'content',
+      reportPack: 'monthly_seo',
+      reportFormat: 'markdown',
+    });
+
+    const payload = parseResult(result);
+    expect((payload.report as Record<string, unknown>).pack).toEqual(
+      expect.objectContaining({
+        name: 'monthly_seo',
+        headline: 'Monthly SEO update pack',
+        cadence: 'monthly',
+        primaryAudience: 'client',
+      }),
+    );
+    expect(String(payload.markdownReport)).toContain('Pack Headline: Monthly SEO update pack');
   });
 
   it('returns htmlReport only when reportFormat=html', async () => {
@@ -105,7 +153,7 @@ describe('run_seo_audit_workflow', () => {
     expect(payload.reportFormat).toBe('html');
     expect(payload.markdownReport).toBeUndefined();
     expect(typeof payload.htmlReport).toBe('string');
-    expect(String(payload.htmlReport)).toContain('Print-ready workflow handoff');
+    expect(String(payload.htmlReport)).toContain('Standard content workflow handoff without a report-pack preset.');
     expect(String(payload.htmlReport)).toContain('Nth Agency');
     expect((payload.report as Record<string, unknown>).meta).toEqual(
       expect.objectContaining({

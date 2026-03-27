@@ -329,7 +329,7 @@ Generated from the runtime tool registry.
 
 **Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters.
 
-**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, a shared `report` payload, and optional `markdownReport` / `htmlReport` handoff outputs. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs.
+**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, a shared `report` payload, and optional `markdownReport` / `htmlReport` handoff outputs. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs. Report packs are validated against compatible profiles: `technical_audit` -> `technical`, `indexing_recovery` -> `indexing`, `monthly_seo` / `content_opportunities` -> `content`.
 
 **Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
 
