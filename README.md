@@ -124,7 +124,7 @@ With global exports, your `.mcp.json` simplifies to:
 | `search_analytics_cursor` | Cursor-based retrieval for large analytics datasets. Returns one page of rows and a nextCursor token for incremental fetches up to 100K rows. |
 | `enhanced_search_analytics` | Advanced search analytics with regex filters, optional auto-pagination up to 100K rows, and optional quick-wins detection |
 | `detect_quick_wins` | Find SEO quick-win opportunities: high-impression, low-CTR queries in striking distance (positions 4-10), with optional auto-pagination up to 100K rows |
-| `recommend_next_actions` | Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, and CWV quality. |
+| `recommend_next_actions` | Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, CWV quality, branded segmentation, and page template grouping. |
 | `run_seo_audit_workflow` | Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, issues/actions with ownership metadata, a shared report contract, and optional markdown and/or branded HTML report output. |
 | `index_inspect` | Inspect a URL for indexing status, crawl info, mobile usability, and rich results |
 | `list_sitemaps` | List all sitemaps submitted for a site |
@@ -243,6 +243,9 @@ Generated from the runtime tool registry.
   "days": 28,
   "topActions": 5,
   "minImpressions": 100,
+  "brandTerms": [
+    "example"
+  ],
   "includeCwv": true
 }
 ```
@@ -327,7 +330,7 @@ Generated from the runtime tool registry.
 
 **Cursor retrieval** — `search_analytics_cursor` returns one page plus `pageInfo.nextCursor` so agents can stream large result sets in deterministic chunks instead of one giant payload.
 
-**Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters.
+**Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters. `recommend_next_actions` now also returns branded vs non-branded segmentation and page template grouping, with optional `brandTerms` override input.
 
 **Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, deterministic `issues` / `actions` handoff data, a shared `report` payload, and optional `markdownReport` / `htmlReport` outputs. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs. Report packs are validated against compatible profiles: `technical_audit` -> `technical`, `indexing_recovery` -> `indexing`, `monthly_seo` / `content_opportunities` -> `content`.
 

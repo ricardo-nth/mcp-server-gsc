@@ -82,5 +82,84 @@ describe('recommend_next_actions', () => {
     expect(['low', 'medium', 'high']).toContain(recommendationsA[0]?.impact);
     expect(Array.isArray(recommendationsA[0]?.rationale)).toBe(true);
     expect(recommendationsA[0]?.reasonFields).toBeDefined();
+    expect(['branded', 'non_branded']).toContain(recommendationsA[0]?.brandSegment);
+    expect(recommendationsA[0]?.pageTemplate).toBeTypeOf('string');
+    expect(first.segmentationSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          segment: 'non_branded',
+        }),
+      ]),
+    );
+    expect(first.templateGroups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          template: 'other',
+        }),
+      ]),
+    );
+  });
+
+  it('derives branded segmentation from explicit brand terms and groups by template', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: {
+          rows: [
+            {
+              keys: ['nth crm pricing', 'https://example.com/pricing'],
+              clicks: 18,
+              impressions: 500,
+              ctr: 0.036,
+              position: 4.8,
+            },
+            {
+              keys: ['best crm platform', 'https://example.com/blog/crm-guide'],
+              clicks: 10,
+              impressions: 900,
+              ctr: 0.011,
+              position: 7.1,
+            },
+          ],
+        },
+      }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: {
+          inspectionResult: {
+            indexStatusResult: {
+              verdict: 'PASS',
+              coverageState: 'Submitted and indexed',
+            },
+          },
+        },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.88 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = parseResult(
+      await handleRecommendNextActions(service, {
+        siteUrl: 'sc-domain:example.com',
+        days: 28,
+        topActions: 2,
+        minImpressions: 100,
+        includeCwv: true,
+        brandTerms: ['nth'],
+      }),
+    );
+
+    expect(result.brandTermsUsed).toEqual(expect.arrayContaining(['nth', 'example']));
+    expect(result.segmentationSummary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ segment: 'branded', opportunities: 1 }),
+        expect.objectContaining({ segment: 'non_branded', opportunities: 1 }),
+      ]),
+    );
+    expect(result.templateGroups).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ template: 'product', brandedOpportunities: 1 }),
+        expect.objectContaining({ template: 'blog', nonBrandedOpportunities: 1 }),
+      ]),
+    );
   });
 });

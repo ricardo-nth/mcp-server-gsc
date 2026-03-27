@@ -38,6 +38,36 @@ export function clusterQuery(query: string): string {
   return topTerms.join('-') || 'misc';
 }
 
+export function deriveBrandTerms(siteUrl: string, explicitTerms: string[] = []): string[] {
+  const normalizedTerms = explicitTerms
+    .map((term) => term.trim().toLowerCase())
+    .filter((term) => term.length >= 2);
+
+  let hostnameTerms: string[] = [];
+  try {
+    const normalizedSiteUrl = siteUrl.startsWith('sc-domain:') ? `https://${siteUrl.slice('sc-domain:'.length)}` : siteUrl;
+    const hostname = new URL(normalizedSiteUrl).hostname.replace(/^www\./, '');
+    hostnameTerms = hostname
+      .split('.')
+      .slice(0, -1)
+      .flatMap((token) => token.split(/[-_]/))
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token.length >= 3 && !['site', 'app', 'web'].includes(token));
+  } catch {
+    hostnameTerms = [];
+  }
+
+  return Array.from(new Set([...normalizedTerms, ...hostnameTerms]));
+}
+
+export function detectBrandSegment(
+  query: string,
+  brandTerms: string[],
+): 'branded' | 'non_branded' {
+  const normalizedQuery = query.toLowerCase();
+  return brandTerms.some((term) => normalizedQuery.includes(term)) ? 'branded' : 'non_branded';
+}
+
 export function detectPageTemplate(url: string, customRules: TemplateRule[] = []): string {
   let pathname = '';
   try {

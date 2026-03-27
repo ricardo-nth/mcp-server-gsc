@@ -245,6 +245,16 @@ describe('RecommendNextActionsSchema', () => {
     expect(result.minImpressions).toBe(80);
     expect(result.includeCwv).toBe(true);
   });
+
+  it('accepts explicit brand terms for branded segmentation', () => {
+    const result = RecommendNextActionsSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      brandTerms: ['nth', 'brand'],
+    });
+
+    expect(result.brandTerms).toEqual(['nth', 'brand']);
+  });
 });
 
 describe('Phase 4 schema extensions', () => {

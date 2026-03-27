@@ -1,6 +1,7 @@
 import { SearchConsoleService } from '../service.js';
 import { RecommendNextActionsSchema } from '../schemas/recommendations.js';
 import { resolveDateRange } from '../utils/dates.js';
+import { deriveBrandTerms, detectBrandSegment, detectPageTemplate } from '../utils/seo-analysis.js';
 import {
   confidenceScore,
   cwvOpportunityFromPerformanceScore,
@@ -20,6 +21,8 @@ interface CandidateSignal {
   ctrPct: number;
   position: number;
   clickUpside: number;
+  brandSegment: 'branded' | 'non_branded';
+  pageTemplate: string;
 }
 
 interface PageDiagnostic {
@@ -36,7 +39,11 @@ function targetCtrByPosition(position: number): number {
   return 2;
 }
 
-function getSignals(rows: SearchAnalyticsRow[], minImpressions: number): CandidateSignal[] {
+function getSignals(
+  rows: SearchAnalyticsRow[],
+  minImpressions: number,
+  brandTerms: string[],
+): CandidateSignal[] {
   return rows
     .map((row) => {
       const query = row.keys?.[0] ?? '';
@@ -55,6 +62,8 @@ function getSignals(rows: SearchAnalyticsRow[], minImpressions: number): Candida
         ctrPct: Number(ctrPct.toFixed(2)),
         position: Number(position.toFixed(2)),
         clickUpside,
+        brandSegment: detectBrandSegment(query, brandTerms),
+        pageTemplate: detectPageTemplate(page),
       };
     })
     .filter(
@@ -72,6 +81,7 @@ export async function handleRecommendNextActions(
 ): Promise<ToolResult> {
   const args = RecommendNextActionsSchema.parse(raw);
   const { startDate, endDate } = resolveDateRange(args);
+  const brandTerms = deriveBrandTerms(args.siteUrl, args.brandTerms);
 
   const analytics = await service.searchAnalytics(args.siteUrl, {
     startDate,
@@ -81,7 +91,7 @@ export async function handleRecommendNextActions(
     dataState: 'all',
   });
   const rows = ((analytics.data as { rows?: SearchAnalyticsRow[] }).rows ?? []) as SearchAnalyticsRow[];
-  const signals = getSignals(rows, args.minImpressions);
+  const signals = getSignals(rows, args.minImpressions, brandTerms);
 
   if (signals.length === 0) {
     return jsonResult({
@@ -185,6 +195,8 @@ export async function handleRecommendNextActions(
         action,
         query: signal.query,
         page: signal.page,
+        brandSegment: signal.brandSegment,
+        pageTemplate: signal.pageTemplate,
         score,
         confidence,
         impact: impactBucket(score),
@@ -198,6 +210,8 @@ export async function handleRecommendNextActions(
           impressions: signal.impressions,
           position: signal.position,
           ctrPct: signal.ctrPct,
+          brandSegment: signal.brandSegment,
+          pageTemplate: signal.pageTemplate,
           indexVerdict: diagnostic?.verdict ?? null,
           cwvPerformanceScore: diagnostic?.performanceScore ?? null,
         },
@@ -213,11 +227,61 @@ export async function handleRecommendNextActions(
     )
     .slice(0, args.topActions);
 
+  const segmentationSummary = Array.from(
+    signals.reduce<
+      Map<
+        CandidateSignal['brandSegment'],
+        { segment: CandidateSignal['brandSegment']; opportunities: number; totalClickUpside: number; totalImpressions: number }
+      >
+    >((acc, signal) => {
+      const current = acc.get(signal.brandSegment) ?? {
+        segment: signal.brandSegment,
+        opportunities: 0,
+        totalClickUpside: 0,
+        totalImpressions: 0,
+      };
+      current.opportunities += 1;
+      current.totalClickUpside += signal.clickUpside;
+      current.totalImpressions += signal.impressions;
+      acc.set(signal.brandSegment, current);
+      return acc;
+    }, new Map()).values(),
+  ).sort((a, b) => b.totalClickUpside - a.totalClickUpside);
+
+  const templateGroups = Array.from(
+    signals.reduce<
+      Map<
+        string,
+        { template: string; opportunities: number; totalClickUpside: number; brandedOpportunities: number; nonBrandedOpportunities: number }
+      >
+    >((acc, signal) => {
+      const current = acc.get(signal.pageTemplate) ?? {
+        template: signal.pageTemplate,
+        opportunities: 0,
+        totalClickUpside: 0,
+        brandedOpportunities: 0,
+        nonBrandedOpportunities: 0,
+      };
+      current.opportunities += 1;
+      current.totalClickUpside += signal.clickUpside;
+      if (signal.brandSegment === 'branded') {
+        current.brandedOpportunities += 1;
+      } else {
+        current.nonBrandedOpportunities += 1;
+      }
+      acc.set(signal.pageTemplate, current);
+      return acc;
+    }, new Map()).values(),
+  ).sort((a, b) => b.totalClickUpside - a.totalClickUpside);
+
   return jsonResult({
     siteUrl: args.siteUrl,
     dateRange: { startDate, endDate },
     analyzedRows: signals.length,
     diagnosticsPagesChecked: diagnosticPages.length,
+    brandTermsUsed: brandTerms,
+    segmentationSummary,
+    templateGroups,
     recommendations: ranked,
   });
 }
