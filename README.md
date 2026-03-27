@@ -125,7 +125,7 @@ With global exports, your `.mcp.json` simplifies to:
 | `enhanced_search_analytics` | Advanced search analytics with regex filters, optional auto-pagination up to 100K rows, and optional quick-wins detection |
 | `detect_quick_wins` | Find SEO quick-win opportunities: high-impression, low-CTR queries in striking distance (positions 4-10), with optional auto-pagination up to 100K rows |
 | `recommend_next_actions` | Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, CWV quality, branded segmentation, and page template grouping. |
-| `run_seo_audit_workflow` | Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, issues/actions with ownership metadata, a shared report contract, and optional markdown and/or branded HTML report output. |
+| `run_seo_audit_workflow` | Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, issues/actions with ownership metadata, a shared report contract, and optional markdown and/or branded HTML report output, including client-ready monthly SEO sections when reportPack is "monthly_seo". |
 | `index_inspect` | Inspect a URL for indexing status, crawl info, mobile usability, and rich results |
 | `list_sitemaps` | List all sitemaps submitted for a site |
 | `get_sitemap` | Get details of a specific sitemap |
@@ -256,10 +256,10 @@ Generated from the runtime tool registry.
 {
   "siteUrl": "sc-domain:example.com",
   "days": 28,
-  "profile": "technical",
+  "profile": "content",
   "reportFormat": "all",
-  "detailMode": "client",
-  "reportPack": "technical_audit",
+  "detailMode": "both",
+  "reportPack": "monthly_seo",
   "brand": {
     "name": "Nth Agency",
     "accentColor": "#0F172A"
@@ -332,7 +332,7 @@ Generated from the runtime tool registry.
 
 **Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters. `recommend_next_actions` now also returns branded vs non-branded segmentation and page template grouping, with optional `brandTerms` input that extends derived hostname terms. `cannibalization_resolver` adds the same brand-term extension path plus stronger severity, owner, and action-priority guidance.
 
-**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, deterministic `issues` / `actions` handoff data, a shared `report` payload, and optional `markdownReport` / `htmlReport` outputs. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs. Report packs are validated against compatible profiles: `technical_audit` -> `technical`, `indexing_recovery` -> `indexing`, `monthly_seo` / `content_opportunities` -> `content`. If `profile` is omitted, the workflow still defaults to `technical`.
+**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, deterministic `issues` / `actions` handoff data, a shared `report` payload, and optional `markdownReport` / `htmlReport` outputs. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs. The `monthly_seo` pack now renders a client-facing performance report with month-over-month KPI summaries, visibility wins, popular searches, top pages, brand vs non-brand performance, next-month priorities, and an analyst appendix. Report packs are validated against compatible profiles: `technical_audit` -> `technical`, `indexing_recovery` -> `indexing`, `monthly_seo` / `content_opportunities` -> `content`. If `profile` is omitted, the workflow still defaults to `technical`.
 
 **Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
 

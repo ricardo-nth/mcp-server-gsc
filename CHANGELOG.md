@@ -12,6 +12,7 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Branded HTML workflow report rendering for `run_seo_audit_workflow`, including `htmlReport` output and `reportFormat: "html" | "all"` support for print-ready client handoff.
 - Workflow report packs for `monthly_seo`, `technical_audit`, `indexing_recovery`, and `content_opportunities`, with profile compatibility validation and pack-specific report context.
 - Professional workflow handoff outputs for `run_seo_audit_workflow`, including deterministic `issues` and `actions`, severity/impact/effort metadata, ownership routing, client summaries, and analyst detail mode support.
+- Client-facing `monthly_seo` workflow reports with month-over-month KPI summaries, visibility wins, popular searches, top pages, branded vs non-branded performance, next-month priorities, and an analyst appendix.
 - Internal provider abstraction and registry foundations for backlinks, keyword difficulty, competitor overlap, and traffic estimate integrations, with additive `health_snapshot` provider diagnostics.
 - Ahrefs scaffold provider registered by default in scaffold mode, backed by deterministic fixtures so provider contracts and operations diagnostics are testable before live API wiring.
 - Expanded `recommend_next_actions` with branded vs non-branded opportunity segmentation, derived brand-term detection, and page template grouping for stronger native SEO prioritization.

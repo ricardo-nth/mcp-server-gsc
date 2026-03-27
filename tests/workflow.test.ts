@@ -93,19 +93,149 @@ describe('run_seo_audit_workflow', () => {
     expect((payload.executiveSummary as Record<string, unknown>).stepsSucceeded).toBeGreaterThan(0);
   });
 
-  it('uses monthly SEO pack context for compatible content workflows', async () => {
+  it('renders monthly SEO pack as a client-facing report with performance sections', async () => {
+    const searchAnalytics = vi.fn().mockImplementation(async (_siteUrl: string, body: Record<string, unknown>) => {
+      const dimensions = (body.dimensions as string[] | undefined) ?? [];
+      const startDate = String(body.startDate ?? '');
+
+      if (dimensions.join(',') === 'query,page') {
+        return {
+          data: {
+            rows: [
+              {
+                keys: ['vertex seo package', 'https://example.com/services/seo'],
+                clicks: 20,
+                impressions: 300,
+                ctr: 0.0667,
+                position: 6.2,
+              },
+            ],
+          },
+        };
+      }
+
+      if (dimensions.join(',') === 'date') {
+        return startDate === '2026-03-01'
+          ? {
+              data: {
+                rows: [
+                  { keys: ['2026-03-01'], clicks: 60, impressions: 800, ctr: 0.075, position: 8 },
+                  { keys: ['2026-03-15'], clicks: 90, impressions: 1200, ctr: 0.075, position: 7.2 },
+                ],
+              },
+            }
+          : {
+              data: {
+                rows: [
+                  { keys: ['2026-02-01'], clicks: 40, impressions: 650, ctr: 0.0615, position: 9.3 },
+                  { keys: ['2026-02-15'], clicks: 55, impressions: 900, ctr: 0.0611, position: 8.8 },
+                ],
+              },
+            };
+      }
+
+      if (dimensions.join(',') === 'query') {
+        return startDate === '2026-03-01'
+          ? {
+              data: {
+                rows: [
+                  { keys: ['vertex seo package'], clicks: 50, impressions: 500, ctr: 0.1, position: 5.8 },
+                  { keys: ['seo retainer uk'], clicks: 35, impressions: 420, ctr: 0.0833, position: 7.1 },
+                  { keys: ['digital marketing middlesbrough'], clicks: 22, impressions: 280, ctr: 0.0785, position: 8.4 },
+                ],
+              },
+            }
+          : {
+              data: {
+                rows: [
+                  { keys: ['vertex seo package'], clicks: 30, impressions: 360, ctr: 0.0833, position: 7.2 },
+                  { keys: ['seo retainer uk'], clicks: 18, impressions: 300, ctr: 0.06, position: 8.1 },
+                  { keys: ['digital marketing middlesbrough'], clicks: 24, impressions: 290, ctr: 0.0828, position: 8.1 },
+                ],
+              },
+            };
+      }
+
+      if (dimensions.join(',') === 'page') {
+        return startDate === '2026-02-01'
+          ? {
+              data: {
+                rows: [
+                  { keys: ['https://example.com/services/seo'], clicks: 32, impressions: 420, ctr: 0.0762, position: 7.8 },
+                  { keys: ['https://example.com/insights/seo'], clicks: 16, impressions: 250, ctr: 0.064, position: 9.5 },
+                ],
+              },
+            }
+          : {
+              data: {
+                rows: [
+                  { keys: ['https://example.com/services/seo'], clicks: 48, impressions: 540, ctr: 0.0889, position: 6.4 },
+                  { keys: ['https://example.com/insights/seo'], clicks: 25, impressions: 290, ctr: 0.0862, position: 8.2 },
+                ],
+              },
+            };
+      }
+
+      return { data: { rows: [] } };
+    });
+
     const service = {
-      searchAnalytics: vi
-        .fn()
-        .mockResolvedValueOnce({
-          data: { rows: [] },
-        })
-        .mockResolvedValueOnce({
-          data: { rows: [] },
-        })
-        .mockResolvedValueOnce({
-          data: { rows: [] },
-        }),
+      searchAnalytics,
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      startDate: '2026-03-01',
+      endDate: '2026-03-28',
+      profile: 'content',
+      reportPack: 'monthly_seo',
+      reportFormat: 'all',
+      detailMode: 'both',
+      brand: {
+        name: 'Nth Agency',
+        accentColor: '#0F172A',
+      },
+    });
+
+    const payload = parseResult(result);
+    const report = payload.report as Record<string, unknown>;
+    const monthlySeo = (report.sections as Record<string, unknown>).monthlySeo as Record<string, unknown>;
+
+    expect(report.pack).toEqual(
+      expect.objectContaining({
+        name: 'monthly_seo',
+        headline: 'Monthly SEO update pack',
+        cadence: 'monthly',
+        primaryAudience: 'client',
+      }),
+    );
+    expect(monthlySeo.kpiSummary).toEqual(expect.any(Array));
+    expect(monthlySeo.popularSearches).toEqual(expect.objectContaining({ topQueries: expect.any(Array) }));
+    expect(monthlySeo.topPages).toEqual(expect.objectContaining({ topPages: expect.any(Array) }));
+    expect(monthlySeo.brandPerformance).toEqual(expect.any(Array));
+    expect(String(payload.markdownReport)).toContain('## KPI Summary');
+    expect(String(payload.markdownReport)).toContain('## Popular Searches');
+    expect(String(payload.markdownReport)).toContain('## Brand vs Non-Brand Performance');
+    expect(String(payload.markdownReport)).toContain('## Analyst Appendix');
+    expect(String(payload.htmlReport)).toContain('Month-over-Month Summary');
+    expect(String(payload.htmlReport)).toContain('Popular Searches');
+    expect(String(payload.htmlReport)).toContain('Top Pages');
+    expect(String(payload.htmlReport)).toContain('Next Month Priorities');
+    expect(String(payload.htmlReport)).toContain('Analyst Appendix');
+    expect(String(payload.htmlReport)).not.toContain('Prioritized Actions');
+  });
+
+  it('keeps monthly SEO report renderable when comparison data is empty', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: { rows: [] },
+      }),
       indexInspect: vi.fn().mockResolvedValue({
         data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
       }),
@@ -119,19 +249,17 @@ describe('run_seo_audit_workflow', () => {
       days: 28,
       profile: 'content',
       reportPack: 'monthly_seo',
-      reportFormat: 'markdown',
+      reportFormat: 'all',
     });
 
     const payload = parseResult(result);
-    expect((payload.report as Record<string, unknown>).pack).toEqual(
-      expect.objectContaining({
-        name: 'monthly_seo',
-        headline: 'Monthly SEO update pack',
-        cadence: 'monthly',
-        primaryAudience: 'client',
-      }),
-    );
-    expect(String(payload.markdownReport)).toContain('Pack Headline: Monthly SEO update pack');
+    const report = payload.report as Record<string, unknown>;
+    const monthlySeo = (report.sections as Record<string, unknown>).monthlySeo as Record<string, unknown>;
+
+    expect(monthlySeo.kpiSummary).toEqual(expect.any(Array));
+    expect(String(payload.markdownReport)).toContain('No notable movement in this section for the selected period.');
+    expect(String(payload.htmlReport)).toContain('No notable movement in this section for the selected period.');
+    expect(String(payload.htmlReport)).toContain('Analyst Appendix');
   });
 
   it('returns htmlReport only when reportFormat=html', async () => {
