@@ -77,7 +77,7 @@ import { redactSensitiveData } from './utils/redaction.js';
 import { ConsoleTelemetrySink, TelemetryRecorder } from './utils/telemetry.js';
 import { handleHealthSnapshot } from './tools/operations.js';
 import { normalizeQuotaTrackedArgs } from './utils/quota.js';
-import { createSeoProviderRegistry } from './providers/index.js';
+import { createDefaultSeoProviders, createSeoProviderRegistry } from './providers/index.js';
 
 // ---------------------------------------------------------------------------
 // Environment
@@ -115,7 +115,7 @@ const server = new Server(
 const RESPONSE_SCHEMA_VERSION = '1.0.0';
 const runtime = new RuntimeCoordinator();
 const telemetry = new TelemetryRecorder(new ConsoleTelemetrySink(), TELEMETRY_ENABLED);
-const providerRegistry = createSeoProviderRegistry();
+const providerRegistry = createSeoProviderRegistry(createDefaultSeoProviders());
 
 type ToolDefinition = {
   name: string;
