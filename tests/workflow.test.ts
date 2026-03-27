@@ -75,12 +75,21 @@ describe('run_seo_audit_workflow', () => {
           cadence: 'ad_hoc',
           primaryAudience: 'both',
         }),
+        audience: expect.objectContaining({
+          detailMode: 'analyst',
+        }),
       }),
     );
+    expect(payload.issues).toEqual(expect.any(Array));
+    expect(payload.actions).toEqual(expect.any(Array));
+    expect(payload.clientSummary).toEqual(expect.any(Array));
+    expect(payload.analystSummary).toEqual(expect.any(Array));
     expect(String(payload.htmlReport)).toContain('<!DOCTYPE html>');
     expect(String(payload.htmlReport)).toContain('Nth Agency');
     expect(String(payload.htmlReport)).toContain('#0F172A');
     expect(String(payload.htmlReport)).toContain('Technical audit pack');
+    expect(String(payload.htmlReport)).toContain('Prioritized Actions');
+    expect(String(payload.markdownReport)).toContain('## Actions');
     expect((payload.executiveSummary as Record<string, unknown>).stepsSucceeded).toBeGreaterThan(0);
   });
 
@@ -140,7 +149,7 @@ describe('run_seo_audit_workflow', () => {
 
     const result = await handleRunSeoAuditWorkflow(service, {
       siteUrl: 'sc-domain:example.com',
-      days: 7,
+      days: 28,
       profile: 'content',
       reportFormat: 'html',
       brand: {
@@ -155,6 +164,8 @@ describe('run_seo_audit_workflow', () => {
     expect(typeof payload.htmlReport).toBe('string');
     expect(String(payload.htmlReport)).toContain('Standard content workflow handoff without a report-pack preset.');
     expect(String(payload.htmlReport)).toContain('Nth Agency');
+    expect(payload.analystSummary).toBeUndefined();
+    expect(payload.clientSummary).toEqual(expect.any(Array));
     expect((payload.report as Record<string, unknown>).meta).toEqual(
       expect.objectContaining({
         format: 'html',
@@ -251,6 +262,44 @@ describe('run_seo_audit_workflow', () => {
     const payload = parseResult(result);
     expect(String(payload.htmlReport)).toContain('Nth &lt;Agency&gt;');
     expect(String(payload.htmlReport)).not.toContain('Nth <Agency>');
+  });
+
+  it('keeps analyst-only detail out of client mode payloads', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: { rows: [] },
+        })
+        .mockResolvedValueOnce({
+          data: { rows: [] },
+        })
+        .mockResolvedValueOnce({
+          data: { rows: [] },
+        }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      profile: 'content',
+      detailMode: 'client',
+    });
+
+    const payload = parseResult(result);
+    expect(payload.analystSummary).toBeUndefined();
+    expect((payload.actions as Array<Record<string, unknown>>).every((item) => !('analystDetail' in item))).toBe(
+      true,
+    );
+    expect((payload.issues as Array<Record<string, unknown>>).every((item) => !('analystDetail' in item))).toBe(
+      true,
+    );
   });
 
   it('keeps workflow valid when one step fails', async () => {
