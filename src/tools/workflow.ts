@@ -40,6 +40,13 @@ interface WorkflowReport {
     reportPack: WorkflowReportPack | null;
     brand: WorkflowBrand | null;
   };
+  pack: {
+    name: WorkflowReportPack | null;
+    headline: string;
+    summary: string;
+    cadence: 'monthly' | 'ad_hoc';
+    primaryAudience: 'client' | 'analyst' | 'both';
+  };
   site: {
     siteUrl: string;
     profile: WorkflowArgs['profile'];
@@ -60,7 +67,7 @@ function unwrapResult(result: ToolResult): unknown {
 async function runStep(step: string, operation: () => Promise<ToolResult>): Promise<WorkflowStepResult> {
   try {
     const result = await operation();
-    return {
+  return {
       step,
       status: result.isError ? 'error' : 'success',
       ...(result.isError
@@ -74,6 +81,78 @@ async function runStep(step: string, operation: () => Promise<ToolResult>): Prom
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function getReportPackConfig(
+  profile: WorkflowArgs['profile'],
+  reportPack?: WorkflowReportPack,
+): WorkflowReport['pack'] {
+  if (reportPack === 'monthly_seo') {
+    return {
+      name: reportPack,
+      headline: 'Monthly SEO update pack',
+      summary:
+        'Summarizes recent search performance movement, opportunity areas, and the clearest follow-up actions for recurring client reporting.',
+      cadence: 'monthly',
+      primaryAudience: 'client',
+    };
+  }
+  if (reportPack === 'technical_audit') {
+    return {
+      name: reportPack,
+      headline: 'Technical audit pack',
+      summary:
+        'Frames the workflow around indexing, site health, and technical risks so teams can move from diagnosis into fixes quickly.',
+      cadence: 'ad_hoc',
+      primaryAudience: 'both',
+    };
+  }
+  if (reportPack === 'indexing_recovery') {
+    return {
+      name: reportPack,
+      headline: 'Indexing recovery pack',
+      summary:
+        'Packages indexing-specific findings into a recovery-oriented handoff with emphasis on non-indexed URLs and remediation sequencing.',
+      cadence: 'ad_hoc',
+      primaryAudience: 'both',
+    };
+  }
+  if (reportPack === 'content_opportunities') {
+    return {
+      name: reportPack,
+      headline: 'Content opportunity pack',
+      summary:
+        'Highlights quick wins, decay trends, and prioritized content actions that can unlock the next tranche of organic growth.',
+      cadence: 'ad_hoc',
+      primaryAudience: 'analyst',
+    };
+  }
+
+  if (profile === 'technical') {
+    return {
+      name: null,
+      headline: 'Technical workflow report',
+      summary: 'Standard technical workflow handoff without a report-pack preset.',
+      cadence: 'ad_hoc',
+      primaryAudience: 'both',
+    };
+  }
+  if (profile === 'content') {
+    return {
+      name: null,
+      headline: 'Content workflow report',
+      summary: 'Standard content workflow handoff without a report-pack preset.',
+      cadence: 'ad_hoc',
+      primaryAudience: 'both',
+    };
+  }
+  return {
+    name: null,
+    headline: 'Indexing workflow report',
+    summary: 'Standard indexing workflow handoff without a report-pack preset.',
+    cadence: 'ad_hoc',
+    primaryAudience: 'both',
+  };
 }
 
 function getReportTitle(profile: WorkflowArgs['profile'], reportPack?: WorkflowReportPack): string {
@@ -120,6 +199,7 @@ function buildMarkdownReport(report: WorkflowReport): string {
   if (report.meta.reportPack) {
     lines.push(`- Report Pack: ${report.meta.reportPack}`);
   }
+  lines.push(`- Pack Headline: ${report.pack.headline}`);
   if (report.meta.brand?.name) {
     lines.push(`- Brand: ${report.meta.brand.name}`);
   }
@@ -130,6 +210,7 @@ function buildMarkdownReport(report: WorkflowReport): string {
   lines.push('## Executive Summary');
   lines.push('');
   lines.push(`- Status: ${report.executiveSummary.overallStatus}`);
+  lines.push(`- Pack Summary: ${report.pack.summary}`);
   lines.push(
     `- Key Actions: ${report.executiveSummary.keyActions.join('; ') || 'No immediate actions identified.'}`,
   );
@@ -394,8 +475,7 @@ function buildHtmlReport(report: WorkflowReport): string {
             </div>
           </div>
           <p class="hero-copy">
-            Print-ready workflow handoff for ${escapeHtml(report.site.siteUrl)} covering
-            ${escapeHtml(report.site.dateRange.startDate)} to ${escapeHtml(report.site.dateRange.endDate)}.
+            ${escapeHtml(report.pack.summary)}
           </p>
         </div>
       </section>
@@ -421,6 +501,24 @@ function buildHtmlReport(report: WorkflowReport): string {
       <section class="section summary-list">
         <h2>Key Actions</h2>
         ${buildListItems(report.executiveSummary.keyActions)}
+      </section>
+
+      <section class="section">
+        <h2>Pack Context</h2>
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">Headline</div>
+            <p class="step-copy">${escapeHtml(report.pack.headline)}</p>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Cadence</div>
+            <div class="stat-value">${escapeHtml(report.pack.cadence)}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Primary Audience</div>
+            <div class="stat-value">${escapeHtml(report.pack.primaryAudience)}</div>
+          </div>
+        </div>
       </section>
 
       <section class="section">
@@ -611,6 +709,7 @@ export async function handleRunSeoAuditWorkflow(
       reportPack: args.reportPack ?? null,
       brand: args.brand ?? null,
     },
+    pack: getReportPackConfig(args.profile, args.reportPack),
     site: {
       siteUrl: args.siteUrl,
       profile: args.profile,

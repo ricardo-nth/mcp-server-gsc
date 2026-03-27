@@ -350,6 +350,17 @@ describe('RunSeoAuditWorkflowSchema', () => {
 
     expect(result.reportFormat).toBe('html');
   });
+
+  it('rejects report packs that do not match the selected workflow profile', () => {
+    expect(() =>
+      RunSeoAuditWorkflowSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        days: 28,
+        profile: 'technical',
+        reportPack: 'monthly_seo',
+      }),
+    ).toThrow(/only compatible/);
+  });
 });
 
 describe('HealthSnapshotSchema', () => {

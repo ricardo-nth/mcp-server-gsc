@@ -24,66 +24,95 @@ const ReportBrandSchema = z.object({
     .optional(),
 });
 
-export const RunSeoAuditWorkflowSchema = SiteUrlSchema.merge(DateRangeSchema).extend({
-  profile: z
-    .enum(AUDIT_PROFILES)
-    .optional()
-    .default('technical')
-    .describe('Workflow profile: technical, content, or indexing.'),
-  topN: z
-    .number()
-    .min(1)
-    .max(100)
-    .optional()
-    .default(25)
-    .describe('Maximum URLs analyzed for indexing-heavy steps.'),
-  rowLimit: z
-    .number()
-    .min(100)
-    .max(5000)
-    .optional()
-    .default(1000)
-    .describe('Row limit for analytics-driven steps.'),
-  urls: z
-    .array(z.string().url('Each URL must be fully-qualified (e.g. https://example.com/page)'))
-    .max(100)
-    .optional()
-    .describe('Optional manual URLs for indexing profile and report enrichment.'),
-  sitemapUrls: z
-    .array(z.string().url('Each sitemap URL must be fully-qualified (e.g. https://example.com/sitemap.xml)'))
-    .max(20)
-    .optional()
-    .describe('Optional sitemap URLs used by technical/indexing profiles.'),
-  sampleUrl: z
-    .string()
-    .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
-    .optional()
-    .describe('Optional page URL for page_health_dashboard step.'),
-  reportFormat: z
-    .enum(REPORT_FORMATS)
-    .optional()
-    .describe('Workflow report output: json (default), markdown, html, or all.'),
-  reportPack: z
-    .enum(REPORT_PACKS)
-    .optional()
-    .describe(
-      'Optional report presentation preset metadata for monthly SEO, technical audit, indexing recovery, or content opportunity workflows.',
+const REPORT_PACK_COMPATIBILITY: Record<
+  (typeof REPORT_PACKS)[number],
+  Array<(typeof AUDIT_PROFILES)[number]>
+> = {
+  monthly_seo: ['content'],
+  technical_audit: ['technical'],
+  indexing_recovery: ['indexing'],
+  content_opportunities: ['content'],
+};
+
+export const RunSeoAuditWorkflowSchema = SiteUrlSchema.merge(DateRangeSchema)
+  .extend({
+    profile: z
+      .enum(AUDIT_PROFILES)
+      .optional()
+      .default('technical')
+      .describe('Workflow profile: technical, content, or indexing.'),
+    topN: z
+      .number()
+      .min(1)
+      .max(100)
+      .optional()
+      .default(25)
+      .describe('Maximum URLs analyzed for indexing-heavy steps.'),
+    rowLimit: z
+      .number()
+      .min(100)
+      .max(5000)
+      .optional()
+      .default(1000)
+      .describe('Row limit for analytics-driven steps.'),
+    urls: z
+      .array(z.string().url('Each URL must be fully-qualified (e.g. https://example.com/page)'))
+      .max(100)
+      .optional()
+      .describe('Optional manual URLs for indexing profile and report enrichment.'),
+    sitemapUrls: z
+      .array(
+        z.string().url('Each sitemap URL must be fully-qualified (e.g. https://example.com/sitemap.xml)'),
+      )
+      .max(20)
+      .optional()
+      .describe('Optional sitemap URLs used by technical/indexing profiles.'),
+    sampleUrl: z
+      .string()
+      .url('Must be a fully-qualified URL (e.g. https://example.com/page)')
+      .optional()
+      .describe('Optional page URL for page_health_dashboard step.'),
+    reportFormat: z
+      .enum(REPORT_FORMATS)
+      .optional()
+      .describe('Workflow report output: json (default), markdown, html, or all.'),
+    reportPack: z
+      .enum(REPORT_PACKS)
+      .optional()
+      .describe(
+        'Optional report presentation preset metadata for monthly SEO, technical audit, indexing recovery, or content opportunity workflows.',
+      ),
+    detailMode: z
+      .enum(DETAIL_MODES)
+      .optional()
+      .default('client')
+      .describe('Audience detail level for the shared report payload: client, analyst, or both.'),
+    brand: ReportBrandSchema.optional().describe(
+      'Optional brand metadata carried through the workflow report contract.',
     ),
-  detailMode: z
-    .enum(DETAIL_MODES)
-    .optional()
-    .default('client')
-    .describe('Audience detail level for the shared report payload: client, analyst, or both.'),
-  brand: ReportBrandSchema.optional().describe(
-    'Optional brand metadata carried through the workflow report contract.',
-  ),
-  markdown: z
-    .boolean()
-    .optional()
-    .default(false)
-    .describe(
-      'Legacy alias for markdown report output. Ignored when reportFormat is provided.',
-    ),
-});
+    markdown: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe(
+        'Legacy alias for markdown report output. Ignored when reportFormat is provided.',
+      ),
+  })
+  .superRefine((value, ctx) => {
+    if (!value.reportPack) {
+      return;
+    }
+
+    const allowedProfiles = REPORT_PACK_COMPATIBILITY[value.reportPack];
+    if (!allowedProfiles.includes(value.profile)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reportPack'],
+        message: `reportPack "${value.reportPack}" is only compatible with profile ${allowedProfiles
+          .map((profile) => `"${profile}"`)
+          .join(' or ')}.`,
+      });
+    }
+  });
 
 export type RunSeoAuditWorkflowInput = z.infer<typeof RunSeoAuditWorkflowSchema>;
