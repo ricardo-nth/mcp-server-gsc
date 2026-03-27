@@ -17,6 +17,10 @@ const ReportBrandSchema = z.object({
   logoUrl: z
     .string()
     .url('Brand logoUrl must be a fully-qualified URL (e.g. https://example.com/logo.png)')
+    .refine(
+      (value) => /^https?:\/\//i.test(value),
+      'Brand logoUrl must use http:// or https://.',
+    )
     .optional(),
   accentColor: z
     .string()

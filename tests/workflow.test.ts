@@ -83,7 +83,7 @@ describe('run_seo_audit_workflow', () => {
     expect(payload.issues).toEqual(expect.any(Array));
     expect(payload.actions).toEqual(expect.any(Array));
     expect(payload.clientSummary).toEqual(expect.any(Array));
-    expect(payload.analystSummary).toEqual(expect.any(Array));
+    expect(payload.analystSummary).toBeUndefined();
     expect(String(payload.htmlReport)).toContain('<!DOCTYPE html>');
     expect(String(payload.htmlReport)).toContain('Nth Agency');
     expect(String(payload.htmlReport)).toContain('#0F172A');
@@ -334,6 +334,58 @@ describe('run_seo_audit_workflow', () => {
     expect(statuses).toContain('error');
     expect(statuses).toContain('success');
     expect((payload.executiveSummary as Record<string, unknown>).overallStatus).toBe('partial');
+  });
+
+  it('sanitizes client-facing error summaries in rendered reports', async () => {
+    const service = {
+      searchAnalytics: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            rows: [{ keys: ['q1', 'https://example.com/a'], clicks: 1, impressions: 200, ctr: 0.01, position: 5 }],
+          },
+        })
+        .mockRejectedValueOnce(new Error('analytics token secret-leak'))
+        .mockResolvedValueOnce({
+          data: {
+            rows: [{ keys: ['q2', 'https://example.com/b'], clicks: 5, impressions: 500, ctr: 0.02, position: 6 }],
+          },
+        }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      profile: 'content',
+      detailMode: 'client',
+      reportFormat: 'all',
+    });
+
+    const payload = parseResult(result);
+    const issues = payload.issues as Array<Record<string, unknown>>;
+
+    expect(issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          clientSummary: 'One workflow step failed and needs analyst follow-up.',
+        }),
+      ]),
+    );
+    expect(payload.analystSummary).toBeUndefined();
+    expect(String(payload.markdownReport)).toContain(
+      'One workflow step failed and needs analyst follow-up.',
+    );
+    expect(String(payload.htmlReport)).toContain(
+      'One workflow step failed and needs analyst follow-up.',
+    );
+    expect(String(payload.markdownReport)).not.toContain('secret-leak');
+    expect(String(payload.htmlReport)).not.toContain('secret-leak');
   });
 
   it('uses explicit date ranges consistently across workflow steps', async () => {

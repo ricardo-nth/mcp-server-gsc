@@ -95,7 +95,13 @@ export async function handleRecommendNextActions(
 
   if (signals.length === 0) {
     return jsonResult({
+      siteUrl: args.siteUrl,
       dateRange: { startDate, endDate },
+      analyzedRows: 0,
+      diagnosticsPagesChecked: 0,
+      brandTermsUsed: brandTerms,
+      segmentationSummary: [],
+      templateGroups: [],
       recommendations: [],
       note: 'No query-page opportunities matched filters.',
     });

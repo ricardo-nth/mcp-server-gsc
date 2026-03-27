@@ -52,4 +52,4 @@
 
 ## Action Required For Agents
 
-No action required for valid calls. If a caller uses `reportPack`, it should now pair the pack with a compatible profile: `technical_audit` -> `technical`, `indexing_recovery` -> `indexing`, and `monthly_seo` / `content_opportunities` -> `content`.
+No action required for valid calls. If a caller uses `reportPack`, it should now pair the pack with a compatible profile: `technical_audit` -> `technical`, `indexing_recovery` -> `indexing`, and `monthly_seo` / `content_opportunities` -> `content`. If `profile` is omitted, the workflow still defaults to `technical`, so content/indexing report packs will fail validation unless the caller sets a compatible profile explicitly.

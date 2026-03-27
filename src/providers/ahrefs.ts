@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   SEO_PROVIDER_CAPABILITIES,
   type BacklinkMetricsRequest,
@@ -40,6 +41,10 @@ const DEFAULT_AHREFS_FIXTURES: AhrefsFixtureData = {
   },
 };
 
+const DEFAULT_AHREFS_FIXTURE_PATH = fileURLToPath(
+  new URL('../../tests/fixtures/ahrefs-scaffold.json', import.meta.url),
+);
+
 export interface AhrefsScaffoldProviderOptions {
   fixturePath?: string;
   apiToken?: string;
@@ -50,8 +55,7 @@ export class AhrefsScaffoldProvider implements SeoDataProvider {
   private readonly fixturePath: string;
 
   constructor(options: AhrefsScaffoldProviderOptions = {}) {
-    this.fixturePath =
-      options.fixturePath ?? resolve(process.cwd(), 'tests', 'fixtures', 'ahrefs-scaffold.json');
+    this.fixturePath = options.fixturePath ?? DEFAULT_AHREFS_FIXTURE_PATH;
 
     this.metadata = {
       id: 'ahrefs',
@@ -62,9 +66,76 @@ export class AhrefsScaffoldProvider implements SeoDataProvider {
     };
   }
 
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private normalizeBacklinks(value: unknown): AhrefsFixtureData['backlinks'] {
+    if (!this.isRecord(value)) return DEFAULT_AHREFS_FIXTURES.backlinks;
+    return {
+      referringDomains:
+        typeof value.referringDomains === 'number'
+          ? value.referringDomains
+          : DEFAULT_AHREFS_FIXTURES.backlinks.referringDomains,
+      backlinks:
+        typeof value.backlinks === 'number'
+          ? value.backlinks
+          : DEFAULT_AHREFS_FIXTURES.backlinks.backlinks,
+    };
+  }
+
+  private normalizeKeywordDifficulty(value: unknown): AhrefsFixtureData['keywordDifficulty'] {
+    if (!Array.isArray(value) || value.length === 0) return DEFAULT_AHREFS_FIXTURES.keywordDifficulty;
+    const normalized = value
+      .map((entry) => {
+        if (!this.isRecord(entry)) return null;
+        return {
+          difficulty:
+            typeof entry.difficulty === 'number'
+              ? entry.difficulty
+              : DEFAULT_AHREFS_FIXTURES.keywordDifficulty.at(-1)?.difficulty ?? null,
+        };
+      })
+      .filter((entry): entry is AhrefsFixtureData['keywordDifficulty'][number] => entry !== null);
+    return normalized.length > 0 ? normalized : DEFAULT_AHREFS_FIXTURES.keywordDifficulty;
+  }
+
+  private normalizeCompetitorOverlap(value: unknown): AhrefsFixtureData['competitorOverlap'] {
+    if (!Array.isArray(value) || value.length === 0) return DEFAULT_AHREFS_FIXTURES.competitorOverlap;
+    const normalized = value
+      .map((entry) => {
+        if (!this.isRecord(entry)) return null;
+        return {
+          overlapKeywords:
+            typeof entry.overlapKeywords === 'number'
+              ? entry.overlapKeywords
+              : DEFAULT_AHREFS_FIXTURES.competitorOverlap.at(-1)?.overlapKeywords ?? null,
+        };
+      })
+      .filter((entry): entry is AhrefsFixtureData['competitorOverlap'][number] => entry !== null);
+    return normalized.length > 0 ? normalized : DEFAULT_AHREFS_FIXTURES.competitorOverlap;
+  }
+
+  private normalizeTrafficEstimate(value: unknown): AhrefsFixtureData['trafficEstimate'] {
+    if (!this.isRecord(value)) return DEFAULT_AHREFS_FIXTURES.trafficEstimate;
+    return {
+      estimatedMonthlyOrganicVisits:
+        typeof value.estimatedMonthlyOrganicVisits === 'number'
+          ? value.estimatedMonthlyOrganicVisits
+          : DEFAULT_AHREFS_FIXTURES.trafficEstimate.estimatedMonthlyOrganicVisits,
+    };
+  }
+
   private loadFixtures(): AhrefsFixtureData {
     try {
-      return JSON.parse(readFileSync(this.fixturePath, 'utf8')) as AhrefsFixtureData;
+      const parsed = JSON.parse(readFileSync(resolve(this.fixturePath), 'utf8')) as unknown;
+      const fixture = this.isRecord(parsed) ? parsed : {};
+      return {
+        backlinks: this.normalizeBacklinks(fixture.backlinks),
+        keywordDifficulty: this.normalizeKeywordDifficulty(fixture.keywordDifficulty),
+        competitorOverlap: this.normalizeCompetitorOverlap(fixture.competitorOverlap),
+        trafficEstimate: this.normalizeTrafficEstimate(fixture.trafficEstimate),
+      };
     } catch {
       return DEFAULT_AHREFS_FIXTURES;
     }

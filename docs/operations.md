@@ -42,6 +42,7 @@ It reports:
 - Persistence status, state file path, and last load/save timestamps
 - Global and per-tool concurrency queues
 - Quota budget usage + remaining headroom
+- Provider registry diagnostics, capability coverage, and configured provider count
 - Per-tool success/failure/latency counters
 - Current observability mode flags
 

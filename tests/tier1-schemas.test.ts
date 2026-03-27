@@ -351,6 +351,19 @@ describe('RunSeoAuditWorkflowSchema', () => {
     ).toThrow(/accentColor/);
   });
 
+  it('rejects non-http brand logo URLs', () => {
+    expect(() =>
+      RunSeoAuditWorkflowSchema.parse({
+        siteUrl: 'sc-domain:example.com',
+        days: 28,
+        brand: {
+          name: 'Nth Agency',
+          logoUrl: 'ftp://example.com/logo.png',
+        },
+      }),
+    ).toThrow(/http:\/\/ or https:\/\//);
+  });
+
   it('accepts html-only report rendering mode', () => {
     const result = RunSeoAuditWorkflowSchema.parse({
       siteUrl: 'sc-domain:example.com',
@@ -370,6 +383,24 @@ describe('RunSeoAuditWorkflowSchema', () => {
         reportPack: 'monthly_seo',
       }),
     ).toThrow(/only compatible/);
+  });
+
+  it('rejects content-only report packs when profile is omitted and defaults to technical', () => {
+    const result = RunSeoAuditWorkflowSchema.safeParse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      reportPack: 'monthly_seo',
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          path: ['reportPack'],
+          message: 'reportPack "monthly_seo" is only compatible with profile "content".',
+        }),
+      ]),
+    );
   });
 });
 

@@ -7,7 +7,7 @@
 
 ## Summary
 
-`recommend_next_actions` now adds branded vs non-branded segmentation and page template grouping to its additive output. Each recommendation also includes `brandSegment` and `pageTemplate`, and callers can optionally pass `brandTerms` to override automatic brand-term derivation.
+`recommend_next_actions` now adds branded vs non-branded segmentation and page template grouping to its additive output. Each recommendation also includes `brandSegment` and `pageTemplate`, and callers can optionally pass `brandTerms` to extend automatic brand-term derivation.
 
 ## Before
 

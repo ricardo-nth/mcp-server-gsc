@@ -162,4 +162,34 @@ describe('recommend_next_actions', () => {
       ]),
     );
   });
+
+  it('returns a stable empty response shape and skips multipart tld suffixes in derived brand terms', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: {
+          rows: [],
+        },
+      }),
+      indexInspect: vi.fn(),
+      runPageSpeed: vi.fn(),
+    } as unknown as SearchConsoleService;
+
+    const result = parseResult(
+      await handleRecommendNextActions(service, {
+        siteUrl: 'sc-domain:example.com.au',
+        days: 28,
+        topActions: 5,
+        minImpressions: 100,
+      }),
+    );
+
+    expect(result.siteUrl).toBe('sc-domain:example.com.au');
+    expect(result.analyzedRows).toBe(0);
+    expect(result.diagnosticsPagesChecked).toBe(0);
+    expect(result.brandTermsUsed).toContain('example');
+    expect(result.brandTermsUsed).not.toContain('com');
+    expect(result.segmentationSummary).toEqual([]);
+    expect(result.templateGroups).toEqual([]);
+    expect(result.recommendations).toEqual([]);
+  });
 });
