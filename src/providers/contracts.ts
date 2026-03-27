@@ -7,6 +7,11 @@ export const SEO_PROVIDER_CAPABILITIES = [
 
 export type SeoProviderCapability = (typeof SEO_PROVIDER_CAPABILITIES)[number];
 export type SeoProviderMode = 'live' | 'scaffold';
+export type SeoProviderMethodName =
+  | 'getBacklinkMetrics'
+  | 'getKeywordDifficulty'
+  | 'getCompetitorOverlap'
+  | 'getTrafficEstimate';
 
 export interface SeoProviderMetadata {
   id: string;
@@ -63,4 +68,22 @@ export interface SeoDataProvider {
   getKeywordDifficulty?(input: KeywordDifficultyRequest): Promise<KeywordDifficultyResponse[]>;
   getCompetitorOverlap?(input: CompetitorOverlapRequest): Promise<CompetitorOverlapResponse[]>;
   getTrafficEstimate?(input: TrafficEstimateRequest): Promise<TrafficEstimateResponse>;
+}
+
+export const SEO_PROVIDER_METHODS: Record<SeoProviderCapability, SeoProviderMethodName> = {
+  backlinks: 'getBacklinkMetrics',
+  keywordDifficulty: 'getKeywordDifficulty',
+  competitorOverlap: 'getCompetitorOverlap',
+  trafficEstimate: 'getTrafficEstimate',
+};
+
+export function validateSeoProvider(provider: SeoDataProvider): void {
+  for (const capability of provider.metadata.capabilities) {
+    const methodName = SEO_PROVIDER_METHODS[capability];
+    if (typeof provider[methodName] !== 'function') {
+      throw new Error(
+        `Provider "${provider.metadata.id}" advertises capability "${capability}" but is missing ${methodName}().`,
+      );
+    }
+  }
 }

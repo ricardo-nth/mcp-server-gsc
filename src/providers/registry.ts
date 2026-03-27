@@ -3,6 +3,7 @@ import {
   type SeoDataProvider,
   type SeoProviderCapability,
   type SeoProviderMetadata,
+  validateSeoProvider,
 } from './contracts.js';
 
 export interface SeoProviderRegistrySnapshot {
@@ -16,6 +17,10 @@ export class SeoProviderRegistry {
   private readonly providers = new Map<string, SeoDataProvider>();
 
   register(provider: SeoDataProvider): void {
+    if (this.providers.has(provider.metadata.id)) {
+      throw new Error(`Provider "${provider.metadata.id}" is already registered.`);
+    }
+    validateSeoProvider(provider);
     this.providers.set(provider.metadata.id, provider);
   }
 

@@ -14,7 +14,7 @@ import {
 type WorkflowArgs = ReturnType<typeof RunSeoAuditWorkflowSchema.parse>;
 type WorkflowReportFormat = NonNullable<WorkflowArgs['reportFormat']> | 'json';
 type WorkflowDetailMode = WorkflowArgs['detailMode'];
-type WorkflowReportPack = WorkflowArgs['reportPack'];
+type WorkflowReportPack = NonNullable<WorkflowArgs['reportPack']>;
 type WorkflowBrand = WorkflowArgs['brand'];
 
 interface WorkflowStepResult {
@@ -100,7 +100,7 @@ function unwrapResult(result: ToolResult): unknown {
 async function runStep(step: string, operation: () => Promise<ToolResult>): Promise<WorkflowStepResult> {
   try {
     const result = await operation();
-  return {
+    return {
       step,
       status: result.isError ? 'error' : 'success',
       ...(result.isError
@@ -196,7 +196,12 @@ function summarizeError(error: string): string {
   if (error.includes('Number must be greater than or equal to 14')) {
     return 'The requested workflow window was too short for one of the comparison steps.';
   }
-  return `One workflow step failed: ${error}.`;
+  return 'One workflow step failed and needs analyst follow-up.';
+}
+
+function getReportStepError(error: string | undefined, detailMode: WorkflowDetailMode): string {
+  const message = error ?? 'Unknown workflow error';
+  return detailMode === 'client' ? summarizeError(message) : message;
 }
 
 function buildProfessionalOutputs(
@@ -315,7 +320,7 @@ function buildProfessionalOutputs(
     issues,
     actions,
     clientSummary,
-    ...(detailMode === 'client' ? {} : { analystSummary }),
+    ...(detailMode !== 'client' && analystSummary.length > 0 ? { analystSummary } : {}),
   };
 }
 
@@ -412,7 +417,7 @@ function buildMarkdownReport(report: WorkflowReport): string {
     lines.push(`### ${step.step}`);
     lines.push(`- Status: ${step.status}`);
     if (step.status === 'error') {
-      lines.push(`- Error: ${step.error ?? 'Unknown error'}`);
+      lines.push(`- Error: ${getReportStepError(step.error, report.meta.detailMode)}`);
     } else {
       const keys = Object.keys((step.data ?? {}) as Record<string, unknown>).slice(0, 8);
       lines.push(`- Data Keys: ${keys.join(', ') || 'none'}`);
@@ -437,7 +442,7 @@ function buildHtmlReport(report: WorkflowReport): string {
       const statusClass = step.status === 'success' ? 'status-success' : 'status-error';
       const detailMarkup =
         step.status === 'error'
-          ? `<p class="step-copy">${escapeHtml(step.error ?? 'Unknown error')}</p>`
+          ? `<p class="step-copy">${escapeHtml(getReportStepError(step.error, report.meta.detailMode))}</p>`
           : `<p class="step-copy">Data keys: ${escapeHtml(
               Object.keys((step.data ?? {}) as Record<string, unknown>).slice(0, 8).join(', ') || 'none',
             )}</p>`;
@@ -967,7 +972,7 @@ export async function handleRunSeoAuditWorkflow(
     audience: {
       detailMode: args.detailMode,
       clientSummary: professionalOutputs.clientSummary,
-      ...(professionalOutputs.analystSummary
+      ...(professionalOutputs.analystSummary && professionalOutputs.analystSummary.length > 0
         ? { analystSummary: professionalOutputs.analystSummary }
         : {}),
     },
@@ -979,7 +984,9 @@ export async function handleRunSeoAuditWorkflow(
   return jsonResult({
     ...payload,
     clientSummary: professionalOutputs.clientSummary,
-    ...(professionalOutputs.analystSummary ? { analystSummary: professionalOutputs.analystSummary } : {}),
+    ...(professionalOutputs.analystSummary && professionalOutputs.analystSummary.length > 0
+      ? { analystSummary: professionalOutputs.analystSummary }
+      : {}),
     issues: professionalOutputs.issues,
     actions: professionalOutputs.actions,
     report,

@@ -3,6 +3,8 @@ interface TemplateRule {
   pattern: string;
 }
 
+const MULTIPART_TLD_PREFIXES = new Set(['ac', 'co', 'com', 'edu', 'gov', 'net', 'org']);
+
 const STOP_WORDS = new Set([
   'a',
   'an',
@@ -47,9 +49,14 @@ export function deriveBrandTerms(siteUrl: string, explicitTerms: string[] = []):
   try {
     const normalizedSiteUrl = siteUrl.startsWith('sc-domain:') ? `https://${siteUrl.slice('sc-domain:'.length)}` : siteUrl;
     const hostname = new URL(normalizedSiteUrl).hostname.replace(/^www\./, '');
+    const labels = hostname.split('.').filter(Boolean);
+    const hostnameLabelCount =
+      labels.length >= 2 && labels.at(-1)?.length === 2 && labels.at(-2) && MULTIPART_TLD_PREFIXES.has(labels.at(-2)!)
+        ? labels.length - 2
+        : labels.length - 1;
     hostnameTerms = hostname
       .split('.')
-      .slice(0, -1)
+      .slice(0, Math.max(hostnameLabelCount, 0))
       .flatMap((token) => token.split(/[-_]/))
       .map((token) => token.trim().toLowerCase())
       .filter((token) => token.length >= 3 && !['site', 'app', 'web'].includes(token));
@@ -64,8 +71,21 @@ export function detectBrandSegment(
   query: string,
   brandTerms: string[],
 ): 'branded' | 'non_branded' {
-  const normalizedQuery = query.toLowerCase();
-  return brandTerms.some((term) => normalizedQuery.includes(term)) ? 'branded' : 'non_branded';
+  const normalizedQuery = query
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  return brandTerms.some((term) => {
+    const normalizedTerm = term
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
+    if (normalizedTerm.length === 0) return false;
+    const escaped = normalizedTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(?:^| )${escaped}(?: |$)`).test(normalizedQuery);
+  })
+    ? 'branded'
+    : 'non_branded';
 }
 
 export function detectPageTemplate(url: string, customRules: TemplateRule[] = []): string {

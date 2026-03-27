@@ -7,7 +7,7 @@
 
 ## Summary
 
-`cannibalization_resolver` now adds branded segmentation, intent/cluster labels, template context, severity, and stronger action metadata to each resolved query. Callers can also provide `brandTerms` to override automatic brand-term derivation.
+`cannibalization_resolver` now adds branded segmentation, intent/cluster labels, template context, severity, and stronger action metadata to each resolved query. Callers can also provide `brandTerms` to extend automatic brand-term derivation.
 
 ## Before
 

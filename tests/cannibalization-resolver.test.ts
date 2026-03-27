@@ -92,4 +92,42 @@ describe('cannibalization_resolver', () => {
       ]),
     );
   });
+
+  it('does not treat short brand terms as substring matches inside unrelated words', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: {
+          rows: [
+            {
+              keys: ['month end reporting', 'https://example.com/reports/month-end'],
+              clicks: 42,
+              impressions: 900,
+              ctr: 0.047,
+              position: 3.9,
+            },
+            {
+              keys: ['month end reporting', 'https://example.com/blog/month-end-guide'],
+              clicks: 19,
+              impressions: 640,
+              ctr: 0.029,
+              position: 7.3,
+            },
+          ],
+        },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const payload = parseResult(
+      await handleCannibalizationResolver(service, {
+        siteUrl: 'sc-domain:example.com',
+        days: 28,
+        minImpressions: 100,
+        brandTerms: ['nth'],
+      }),
+    );
+
+    const queries = payload.queries as Array<Record<string, unknown>>;
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.brandSegment).toBe('non_branded');
+  });
 });
