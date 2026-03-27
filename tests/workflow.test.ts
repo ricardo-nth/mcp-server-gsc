@@ -8,7 +8,7 @@ function parseResult(result: ToolResult): Record<string, unknown> {
 }
 
 describe('run_seo_audit_workflow', () => {
-  it('returns markdown report and per-step statuses for technical profile', async () => {
+  it('returns shared report payload and markdown output for technical profile', async () => {
     const service = {
       indexInspect: vi.fn().mockResolvedValue({
         data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
@@ -29,14 +29,110 @@ describe('run_seo_audit_workflow', () => {
       days: 7,
       profile: 'technical',
       urls: ['https://example.com/a'],
-      markdown: true,
+      reportFormat: 'markdown',
+      reportPack: 'technical_audit',
+      detailMode: 'analyst',
+      brand: {
+        name: 'Nth Agency',
+        logoUrl: 'https://example.com/logo.png',
+        accentColor: '#0F172A',
+      },
     });
 
     const payload = parseResult(result);
     expect(payload.profile).toBe('technical');
     expect((payload.steps as Array<unknown>).length).toBeGreaterThan(1);
     expect(typeof payload.markdownReport).toBe('string');
+    expect(payload.reportFormat).toBe('markdown');
+    expect(payload.detailMode).toBe('analyst');
+    expect(payload.reportPack).toBe('technical_audit');
+    expect(payload.brand).toEqual({
+      name: 'Nth Agency',
+      logoUrl: 'https://example.com/logo.png',
+      accentColor: '#0F172A',
+    });
+    expect(payload.report).toEqual(
+      expect.objectContaining({
+        meta: expect.objectContaining({
+          title: 'Technical SEO Workflow Report',
+          format: 'markdown',
+          detailMode: 'analyst',
+          reportPack: 'technical_audit',
+          brand: {
+            name: 'Nth Agency',
+            logoUrl: 'https://example.com/logo.png',
+            accentColor: '#0F172A',
+          },
+        }),
+        site: expect.objectContaining({
+          siteUrl: 'sc-domain:example.com',
+          profile: 'technical',
+        }),
+      }),
+    );
     expect((payload.executiveSummary as Record<string, unknown>).stepsSucceeded).toBeGreaterThan(0);
+  });
+
+  it('keeps markdown alias working when reportFormat is omitted', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: { rows: [] },
+      }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      profile: 'content',
+      markdown: true,
+    });
+
+    const payload = parseResult(result);
+    expect(payload.reportFormat).toBe('markdown');
+    expect(typeof payload.markdownReport).toBe('string');
+    expect((payload.report as Record<string, unknown>).meta).toEqual(
+      expect.objectContaining({
+        format: 'markdown',
+        detailMode: 'client',
+      }),
+    );
+  });
+
+  it('lets reportFormat override the legacy markdown flag', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: { rows: [] },
+      }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      profile: 'content',
+      reportFormat: 'json',
+      markdown: true,
+    });
+
+    const payload = parseResult(result);
+    expect(payload.reportFormat).toBe('json');
+    expect(payload.markdownReport).toBeUndefined();
+    expect((payload.report as Record<string, unknown>).meta).toEqual(
+      expect.objectContaining({
+        format: 'json',
+      }),
+    );
   });
 
   it('keeps workflow valid when one step fails', async () => {
