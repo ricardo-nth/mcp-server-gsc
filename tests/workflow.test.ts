@@ -8,7 +8,7 @@ function parseResult(result: ToolResult): Record<string, unknown> {
 }
 
 describe('run_seo_audit_workflow', () => {
-  it('returns shared report payload and markdown output for technical profile', async () => {
+  it('returns shared report payload plus markdown and html output when reportFormat=all', async () => {
     const service = {
       indexInspect: vi.fn().mockResolvedValue({
         data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
@@ -29,7 +29,7 @@ describe('run_seo_audit_workflow', () => {
       days: 7,
       profile: 'technical',
       urls: ['https://example.com/a'],
-      reportFormat: 'markdown',
+      reportFormat: 'all',
       reportPack: 'technical_audit',
       detailMode: 'analyst',
       brand: {
@@ -43,7 +43,8 @@ describe('run_seo_audit_workflow', () => {
     expect(payload.profile).toBe('technical');
     expect((payload.steps as Array<unknown>).length).toBeGreaterThan(1);
     expect(typeof payload.markdownReport).toBe('string');
-    expect(payload.reportFormat).toBe('markdown');
+    expect(typeof payload.htmlReport).toBe('string');
+    expect(payload.reportFormat).toBe('all');
     expect(payload.detailMode).toBe('analyst');
     expect(payload.reportPack).toBe('technical_audit');
     expect(payload.brand).toEqual({
@@ -55,7 +56,7 @@ describe('run_seo_audit_workflow', () => {
       expect.objectContaining({
         meta: expect.objectContaining({
           title: 'Technical SEO Workflow Report',
-          format: 'markdown',
+          format: 'all',
           detailMode: 'analyst',
           reportPack: 'technical_audit',
           brand: {
@@ -70,7 +71,47 @@ describe('run_seo_audit_workflow', () => {
         }),
       }),
     );
+    expect(String(payload.htmlReport)).toContain('<!DOCTYPE html>');
+    expect(String(payload.htmlReport)).toContain('Nth Agency');
+    expect(String(payload.htmlReport)).toContain('#0F172A');
     expect((payload.executiveSummary as Record<string, unknown>).stepsSucceeded).toBeGreaterThan(0);
+  });
+
+  it('returns htmlReport only when reportFormat=html', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: { rows: [] },
+      }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      profile: 'content',
+      reportFormat: 'html',
+      brand: {
+        name: 'Nth Agency',
+        accentColor: '#0F172A',
+      },
+    });
+
+    const payload = parseResult(result);
+    expect(payload.reportFormat).toBe('html');
+    expect(payload.markdownReport).toBeUndefined();
+    expect(typeof payload.htmlReport).toBe('string');
+    expect(String(payload.htmlReport)).toContain('Print-ready workflow handoff');
+    expect(String(payload.htmlReport)).toContain('Nth Agency');
+    expect((payload.report as Record<string, unknown>).meta).toEqual(
+      expect.objectContaining({
+        format: 'html',
+      }),
+    );
   });
 
   it('keeps markdown alias working when reportFormat is omitted', async () => {
@@ -133,6 +174,35 @@ describe('run_seo_audit_workflow', () => {
         format: 'json',
       }),
     );
+  });
+
+  it('escapes HTML-sensitive brand values in html output', async () => {
+    const service = {
+      searchAnalytics: vi.fn().mockResolvedValue({
+        data: { rows: [] },
+      }),
+      indexInspect: vi.fn().mockResolvedValue({
+        data: { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } },
+      }),
+      runPageSpeed: vi.fn().mockResolvedValue({
+        data: { lighthouseResult: { categories: { performance: { score: 0.7 } } } },
+      }),
+    } as unknown as SearchConsoleService;
+
+    const result = await handleRunSeoAuditWorkflow(service, {
+      siteUrl: 'sc-domain:example.com',
+      days: 7,
+      profile: 'content',
+      reportFormat: 'html',
+      brand: {
+        name: 'Nth <Agency>',
+        accentColor: '#0F172A',
+      },
+    });
+
+    const payload = parseResult(result);
+    expect(String(payload.htmlReport)).toContain('Nth &lt;Agency&gt;');
+    expect(String(payload.htmlReport)).not.toContain('Nth <Agency>');
   });
 
   it('keeps workflow valid when one step fails', async () => {

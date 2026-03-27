@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DateRangeSchema, SiteUrlSchema } from './base.js';
 
 const AUDIT_PROFILES = ['technical', 'content', 'indexing'] as const;
-const REPORT_FORMATS = ['json', 'markdown'] as const;
+const REPORT_FORMATS = ['json', 'markdown', 'html', 'all'] as const;
 const REPORT_PACKS = [
   'monthly_seo',
   'technical_audit',
@@ -62,7 +62,7 @@ export const RunSeoAuditWorkflowSchema = SiteUrlSchema.merge(DateRangeSchema).ex
   reportFormat: z
     .enum(REPORT_FORMATS)
     .optional()
-    .describe('Workflow report output: json (default) or markdown.'),
+    .describe('Workflow report output: json (default), markdown, html, or all.'),
   reportPack: z
     .enum(REPORT_PACKS)
     .optional()

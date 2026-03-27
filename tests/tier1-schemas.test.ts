@@ -304,6 +304,7 @@ describe('RunSeoAuditWorkflowSchema', () => {
       siteUrl: 'sc-domain:example.com',
       days: 28,
       markdown: true,
+      reportFormat: 'all',
       reportPack: 'technical_audit',
       detailMode: 'both',
       brand: {
@@ -317,7 +318,7 @@ describe('RunSeoAuditWorkflowSchema', () => {
     expect(result.topN).toBe(25);
     expect(result.rowLimit).toBe(1000);
     expect(result.markdown).toBe(true);
-    expect(result.reportFormat).toBeUndefined();
+    expect(result.reportFormat).toBe('all');
     expect(result.reportPack).toBe('technical_audit');
     expect(result.detailMode).toBe('both');
     expect(result.brand).toEqual({
@@ -338,6 +339,16 @@ describe('RunSeoAuditWorkflowSchema', () => {
         },
       }),
     ).toThrow(/accentColor/);
+  });
+
+  it('accepts html-only report rendering mode', () => {
+    const result = RunSeoAuditWorkflowSchema.parse({
+      siteUrl: 'sc-domain:example.com',
+      days: 28,
+      reportFormat: 'html',
+    });
+
+    expect(result.reportFormat).toBe('html');
   });
 });
 

@@ -125,7 +125,7 @@ With global exports, your `.mcp.json` simplifies to:
 | `enhanced_search_analytics` | Advanced search analytics with regex filters, optional auto-pagination up to 100K rows, and optional quick-wins detection |
 | `detect_quick_wins` | Find SEO quick-win opportunities: high-impression, low-CTR queries in striking distance (positions 4-10), with optional auto-pagination up to 100K rows |
 | `recommend_next_actions` | Generate deterministic ranked SEO actions by combining click upside, impression volume, rank distance, indexing health, and CWV quality. |
-| `run_seo_audit_workflow` | Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, drilldowns, a shared report contract, and optional markdown report output. |
+| `run_seo_audit_workflow` | Run a profile-based SEO audit orchestrator (technical, content, indexing) and return executive summary, drilldowns, a shared report contract, and optional markdown and/or branded HTML report output. |
 | `index_inspect` | Inspect a URL for indexing status, crawl info, mobile usability, and rich results |
 | `list_sitemaps` | List all sitemaps submitted for a site |
 | `get_sitemap` | Get details of a specific sitemap |
@@ -254,9 +254,13 @@ Generated from the runtime tool registry.
   "siteUrl": "sc-domain:example.com",
   "days": 28,
   "profile": "technical",
-  "reportFormat": "markdown",
+  "reportFormat": "all",
   "detailMode": "client",
-  "reportPack": "technical_audit"
+  "reportPack": "technical_audit",
+  "brand": {
+    "name": "Nth Agency",
+    "accentColor": "#0F172A"
+  }
 }
 ```
 
@@ -325,7 +329,7 @@ Generated from the runtime tool registry.
 
 **Intent-aware analysis** — `detect_quick_wins` and `detect_cannibalization` support `intentAware: true` to attach deterministic intent labels and query clusters.
 
-**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, a shared `report` payload, and optional `markdownReport` for copy/paste handoff. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs.
+**Workflow orchestration** — `run_seo_audit_workflow` runs profile-driven multi-step audits (`technical`, `content`, `indexing`) with partial-failure step statuses, executive summary, drilldown sections, a shared `report` payload, and optional `markdownReport` / `htmlReport` handoff outputs. Use `reportFormat`, `reportPack`, `detailMode`, and optional `brand` metadata to shape report-oriented outputs.
 
 **Response mode** — every tool accepts `mode: "full" | "compact"` (default `full`). Use `compact` when you want smaller payloads for large arrays (lower token usage in agent loops).
 

@@ -90,6 +90,25 @@ function resolveReportFormat(args: WorkflowArgs): WorkflowReportFormat {
   return args.reportFormat ?? (args.markdown ? 'markdown' : 'json');
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildListItems(items: string[]): string {
+  if (items.length === 0) {
+    return '<p class="empty-state">No immediate actions identified.</p>';
+  }
+
+  return `<ul>${items
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join('')}</ul>`;
+}
+
 function buildMarkdownReport(report: WorkflowReport): string {
   const lines: string[] = [];
   lines.push(`# ${report.meta.title}`);
@@ -131,6 +150,288 @@ function buildMarkdownReport(report: WorkflowReport): string {
   }
 
   return lines.join('\n');
+}
+
+function buildHtmlReport(report: WorkflowReport): string {
+  const accentColor = report.meta.brand?.accentColor ?? '#0F172A';
+  const brandName = report.meta.brand?.name ?? 'SEO Workflow';
+  const logoMarkup = report.meta.brand?.logoUrl
+    ? `<img class="brand-logo" src="${escapeHtml(report.meta.brand.logoUrl)}" alt="${escapeHtml(brandName)} logo" />`
+    : '';
+  const reportPackMarkup = report.meta.reportPack
+    ? `<span class="pill">Pack: ${escapeHtml(report.meta.reportPack)}</span>`
+    : '';
+  const stepCards = report.sections.drilldown
+    .map((step) => {
+      const statusClass = step.status === 'success' ? 'status-success' : 'status-error';
+      const detailMarkup =
+        step.status === 'error'
+          ? `<p class="step-copy">${escapeHtml(step.error ?? 'Unknown error')}</p>`
+          : `<p class="step-copy">Data keys: ${escapeHtml(
+              Object.keys((step.data ?? {}) as Record<string, unknown>).slice(0, 8).join(', ') || 'none',
+            )}</p>`;
+
+      return `
+        <article class="step-card">
+          <div class="step-card-head">
+            <h3>${escapeHtml(step.step)}</h3>
+            <span class="step-status ${statusClass}">${escapeHtml(step.status)}</span>
+          </div>
+          ${detailMarkup}
+        </article>
+      `;
+    })
+    .join('');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(report.meta.title)}</title>
+    <style>
+      :root {
+        --accent: ${accentColor};
+        --accent-soft: color-mix(in srgb, ${accentColor} 14%, white);
+        --bg: #f5f1e8;
+        --surface: #fffdf9;
+        --ink: #172033;
+        --muted: #5b6475;
+        --border: rgba(23, 32, 51, 0.12);
+        --success: #0f766e;
+        --error: #b42318;
+        --shadow: 0 20px 50px rgba(23, 32, 51, 0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        background:
+          radial-gradient(circle at top left, rgba(255,255,255,0.72), transparent 38%),
+          linear-gradient(180deg, #f8f4eb 0%, var(--bg) 100%);
+        color: var(--ink);
+      }
+      .page {
+        max-width: 1120px;
+        margin: 0 auto;
+        padding: 40px 24px 72px;
+      }
+      .hero {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .hero-accent {
+        height: 14px;
+        background: linear-gradient(90deg, var(--accent), #d7a04d 78%);
+      }
+      .hero-body {
+        padding: 28px;
+      }
+      .hero-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 24px;
+      }
+      .brand-lockup {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .brand-logo {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+        border-radius: 18px;
+        background: white;
+        border: 1px solid var(--border);
+        padding: 8px;
+      }
+      .eyebrow {
+        margin: 0 0 6px;
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+      }
+      h1, h2, h3, p { margin: 0; }
+      h1 {
+        font-size: clamp(2rem, 4vw, 3.6rem);
+        line-height: 0.95;
+        max-width: 10ch;
+      }
+      .hero-copy {
+        max-width: 62ch;
+        margin-top: 16px;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.65;
+      }
+      .hero-pills, .meta-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+      .pill {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: var(--accent-soft);
+        color: var(--ink);
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        font-size: 0.92rem;
+      }
+      .section {
+        margin-top: 24px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        padding: 24px;
+      }
+      .section h2 {
+        margin-bottom: 16px;
+        font-size: 1.35rem;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 16px;
+      }
+      .stat-card, .step-card {
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.7);
+        padding: 18px;
+      }
+      .stat-label {
+        color: var(--muted);
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .stat-value {
+        margin-top: 10px;
+        font-size: 2rem;
+        line-height: 1;
+      }
+      .summary-list ul {
+        margin: 0;
+        padding-left: 20px;
+      }
+      .summary-list li {
+        margin: 0 0 10px;
+        line-height: 1.55;
+      }
+      .empty-state, .step-copy {
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .step-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+      }
+      .step-card-head {
+        display: flex;
+        align-items: start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .step-card h3 {
+        font-size: 1.05rem;
+      }
+      .step-status {
+        border-radius: 999px;
+        padding: 6px 10px;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: white;
+      }
+      .status-success { background: var(--success); }
+      .status-error { background: var(--error); }
+      @page {
+        size: A4;
+        margin: 14mm;
+      }
+      @media print {
+        body {
+          background: white;
+        }
+        .page {
+          max-width: none;
+          padding: 0;
+        }
+        .hero, .section {
+          box-shadow: none;
+          break-inside: avoid;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="hero-accent"></div>
+        <div class="hero-body">
+          <div class="hero-top">
+            <div class="brand-lockup">
+              ${logoMarkup}
+              <div>
+                <p class="eyebrow">${escapeHtml(brandName)}</p>
+                <h1>${escapeHtml(report.meta.title)}</h1>
+              </div>
+            </div>
+            <div class="hero-pills">
+              <span class="pill">Profile: ${escapeHtml(report.site.profile)}</span>
+              <span class="pill">Detail: ${escapeHtml(report.meta.detailMode)}</span>
+              ${reportPackMarkup}
+            </div>
+          </div>
+          <p class="hero-copy">
+            Print-ready workflow handoff for ${escapeHtml(report.site.siteUrl)} covering
+            ${escapeHtml(report.site.dateRange.startDate)} to ${escapeHtml(report.site.dateRange.endDate)}.
+          </p>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>Executive Summary</h2>
+        <div class="stats">
+          <div class="stat-card">
+            <div class="stat-label">Overall Status</div>
+            <div class="stat-value">${escapeHtml(report.executiveSummary.overallStatus)}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Steps Succeeded</div>
+            <div class="stat-value">${report.executiveSummary.stepsSucceeded}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Steps Failed</div>
+            <div class="stat-value">${report.executiveSummary.stepsFailed}</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section summary-list">
+        <h2>Key Actions</h2>
+        ${buildListItems(report.executiveSummary.keyActions)}
+      </section>
+
+      <section class="section">
+        <h2>Workflow Steps</h2>
+        <div class="step-grid">
+          ${stepCards}
+        </div>
+      </section>
+    </main>
+  </body>
+</html>`;
 }
 
 export async function handleRunSeoAuditWorkflow(
@@ -322,6 +623,11 @@ export async function handleRunSeoAuditWorkflow(
   return jsonResult({
     ...payload,
     report,
-    ...(reportFormat === 'markdown' ? { markdownReport: buildMarkdownReport(report) } : {}),
+    ...((reportFormat === 'markdown' || reportFormat === 'all')
+      ? { markdownReport: buildMarkdownReport(report) }
+      : {}),
+    ...((reportFormat === 'html' || reportFormat === 'all')
+      ? { htmlReport: buildHtmlReport(report) }
+      : {}),
   });
 }
