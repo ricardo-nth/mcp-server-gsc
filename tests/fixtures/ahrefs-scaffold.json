@@ -1,0 +1,31 @@
+{
+  "backlinks": {
+    "referringDomains": 214,
+    "backlinks": 1984
+  },
+  "keywordDifficulty": [
+    {
+      "difficulty": 63
+    },
+    {
+      "difficulty": 39
+    },
+    {
+      "difficulty": 22
+    }
+  ],
+  "competitorOverlap": [
+    {
+      "overlapKeywords": 240
+    },
+    {
+      "overlapKeywords": 121
+    },
+    {
+      "overlapKeywords": 57
+    }
+  ],
+  "trafficEstimate": {
+    "estimatedMonthlyOrganicVisits": 26750
+  }
+}
